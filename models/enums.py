@@ -82,3 +82,61 @@ class ReconcileAction(str, Enum):
     SKIPPED = "SKIPPED"
     FAILED = "FAILED"
     BLOCKED = "BLOCKED"
+
+
+# --- PROJECT Enums ---
+
+class TargetClassification(str, Enum):
+    """Classification states for project target paths. (PROJECT)"""
+
+    CLEAN = "CLEAN"
+    COMPATIBLE = "COMPATIBLE"
+    SANEABLE = "SANEABLE"
+    BLOCKED = "BLOCKED"
+
+
+class ScaffoldAction(str, Enum):
+    """Actions taken during project scaffold generation. (PROJECT)"""
+
+    CREATE = "CREATE"
+    REUSE = "REUSE"
+    SKIP = "SKIP"
+    BLOCK = "BLOCK"
+
+
+# --- DEPLOY Enums ---
+
+class DeploymentClassification(str, Enum):
+    """Classification states for project deployment contexts. (DEPLOY)"""
+
+    READY = "READY"
+    REDEPLOYABLE = "REDEPLOYABLE"
+    BLOCKED = "BLOCKED"
+
+
+class DeployAction(str, Enum):
+    """Actions taken during project deployment. (DEPLOY)"""
+
+    VALIDATE = "VALIDATE"
+    BUILD = "BUILD"
+    START = "START"
+    SMOKE = "SMOKE"
+    BLOCK = "BLOCK"
+
+
+# --- OPERATE Enums ---
+
+class AuditClassification(str, Enum):
+    """Classification states for project runtime health audits. (OPERATE)"""
+
+    HEALTHY = "HEALTHY"
+    DEGRADED = "DEGRADED"
+    BLOCKED = "BLOCKED"
+
+
+class BackupResultState(str, Enum):
+    """Result states for project backup creation. (OPERATE)"""
+
+    CREATED = "CREATED"
+    BLOCKED = "BLOCKED"
+    FAILED = "FAILED"

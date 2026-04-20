@@ -18,11 +18,20 @@ Public API:
 from models.check_result import CheckResult
 from models.command_result import CommandResult
 from models.enums import (
+    AuditClassification,
+    BackupResultState,
     CheckStatus,
     ClassificationImpact,
+    DeployAction,
+    DeploymentClassification,
     HostClassification,
     ReconcileAction,
+    ScaffoldAction,
+    TargetClassification,
 )
+from models.deploy_result import DeployResult
+from models.operate_result import BackupResult, ProjectAuditResult
+from models.project_result import ScaffoldResult
 from models.reconcile_result import ReconcileResult, ValidationResult
 
 __all__ = [
@@ -34,4 +43,14 @@ __all__ = [
     "ReconcileAction",
     "ReconcileResult",
     "ValidationResult",
+    "AuditClassification",
+    "BackupResultState",
+    "DeployAction",
+    "DeploymentClassification",
+    "ScaffoldAction",
+    "TargetClassification",
+    "ScaffoldResult",
+    "DeployResult",
+    "ProjectAuditResult",
+    "BackupResult",
 ]
