@@ -53,7 +53,7 @@ def _validate_user_exists(operator_user: str) -> ValidationResult:
 
 def _validate_path_state(
     path: str, expected_type: str, expected_owner: str,
-    expected_perm: str, check_id: str, label: str,
+    expected_perm: str | tuple[str, ...], check_id: str, label: str,
 ) -> ValidationResult:
     """Validate a path exists with correct type, ownership, and permissions."""
     result = run_command(["stat", "-c", "%F %U %a", path])
@@ -79,13 +79,19 @@ def _validate_path_state(
     owner = all_parts[-2]
     file_type = " ".join(all_parts[:-2]).lower()
 
+    if isinstance(expected_perm, str):
+        valid_perms = (expected_perm,)
+    else:
+        valid_perms = expected_perm
+
     issues: list[str] = []
     if expected_type not in file_type:
         issues.append(f"type={file_type} (expected {expected_type})")
     if owner != expected_owner:
         issues.append(f"owner={owner} (expected {expected_owner})")
-    if permission != expected_perm:
-        issues.append(f"permission={permission} (expected {expected_perm})")
+    if permission not in valid_perms:
+        expected_str = " or ".join(valid_perms)
+        issues.append(f"permission={permission} (expected {expected_str})")
 
     if issues:
         return ValidationResult(
@@ -146,8 +152,9 @@ def validate_init_slice(
     results.append(_validate_user_exists(operator_user))
 
     # 2. Home exists with correct ownership
+    # Accept either 750 (more secure, default on some modern systems like Ubuntu 24.04) or 755
     results.append(_validate_path_state(
-        expected_home, "directory", operator_user, "755",
+        expected_home, "directory", operator_user, ("750", "755"),
         "VALIDATE_HOME", "Operator home",
     ))
 
