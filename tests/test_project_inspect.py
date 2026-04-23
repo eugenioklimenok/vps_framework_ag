@@ -37,6 +37,7 @@ def test_classify_blocked_unallowed_files(tmp_path: Path):
 def test_classify_compatible_framework_project(tmp_path: Path):
     (tmp_path / "project.yaml").write_text("test")
     (tmp_path / "compose.yaml").write_text("test")
+    # Without expected_slug it skips slug validation
     assert classify_target(tmp_path) == TargetClassification.COMPATIBLE
 
 
@@ -44,3 +45,21 @@ def test_classify_blocked_partial_framework(tmp_path: Path):
     (tmp_path / "project.yaml").write_text("test")
     # missing compose.yaml
     assert classify_target(tmp_path) == TargetClassification.BLOCKED
+
+
+def test_classify_compatible_framework_project_matching_slug(tmp_path: Path):
+    (tmp_path / "project.yaml").write_text("project_slug: my-slug\n")
+    (tmp_path / "compose.yaml").write_text("test")
+    assert classify_target(tmp_path, expected_slug="my-slug") == TargetClassification.COMPATIBLE
+
+
+def test_classify_blocked_framework_project_conflicting_slug(tmp_path: Path):
+    (tmp_path / "project.yaml").write_text("project_slug: other-slug\n")
+    (tmp_path / "compose.yaml").write_text("test")
+    assert classify_target(tmp_path, expected_slug="my-slug") == TargetClassification.BLOCKED
+
+
+def test_classify_blocked_malformed_project_yaml(tmp_path: Path):
+    (tmp_path / "project.yaml").write_text("some_random_yaml: true\n")
+    (tmp_path / "compose.yaml").write_text("test")
+    assert classify_target(tmp_path, expected_slug="my-slug") == TargetClassification.BLOCKED

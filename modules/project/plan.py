@@ -21,12 +21,12 @@ def validate_slug(slug: str) -> bool:
     return bool(re.match(r"^[a-z0-9-]+$", slug))
 
 
-def plan_scaffold(target_path: Path) -> ScaffoldResult:
+def plan_scaffold(target_path: Path, expected_slug: str = None) -> ScaffoldResult:
     """
     Evaluates the target path and returns a plan based on its classification.
     No mutation happens here.
     """
-    classification = classify_target(target_path)
+    classification = classify_target(target_path, expected_slug=expected_slug)
 
     if classification == TargetClassification.BLOCKED:
         return ScaffoldResult(

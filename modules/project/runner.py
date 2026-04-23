@@ -50,7 +50,7 @@ def run_new_project(slug: str, path: str) -> ScaffoldResult:
         )
 
     # Phase 2: Inspection & Classification
-    classification = classify_target(target_path)
+    classification = classify_target(target_path, expected_slug=slug)
 
     if classification == TargetClassification.BLOCKED:
         return ScaffoldResult(
