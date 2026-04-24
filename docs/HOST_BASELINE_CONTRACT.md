@@ -21,11 +21,25 @@ DEPLOY consumes runtime.
   - SANEABLE
   - BLOCKED
 
-### Contract-level shorthand
+### Classification terminology rule
 
-When this contract uses the term `OK`, it means:
-text
-CLEAN or COMPATIBLE
+The canonical HOST audit classifications are only:
+
+- CLEAN
+- COMPATIBLE
+- SANEABLE
+- BLOCKED
+
+The term `OK` MUST NEVER be used as a host classification.
+
+`OK` is allowed only as a per-check status indicator inside audit output.
+
+Examples:
+
+- `[OK] CHECK_DOCKER_01` is valid check output.
+- `Classification: OK` is INVALID and FORBIDDEN.
+- `Classification: COMPATIBLE` is valid.
+
 
 ## 5. init-vps
 - deterministic
