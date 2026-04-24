@@ -49,7 +49,7 @@ Ensure a consistent and usable container runtime for DEPLOY phase.
 #### Classification
 - Missing Docker → SANEABLE
 - Broken Docker → BLOCKED
-- Fully working → OK
+- Fully working → COMPATIBLE
 
 ## Non-Responsibilities
 - No application deployment
