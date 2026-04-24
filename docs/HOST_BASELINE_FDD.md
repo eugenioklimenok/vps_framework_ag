@@ -8,13 +8,22 @@ The HOST phase is responsible for preparing a VPS into a deterministic, secure, 
 
 ## Functional Slices
 
-### Slice 1: Operator User & SSH Hardening
+### Slice 1: Operator User & SSH Access
+
+#### Objective
+Ensure the operator user exists and has validated SSH key-based access.
+
+#### Responsibilities
 - Ensure operator user exists
-- Validate home directory
+- Validate operator home directory
 - Configure SSH key-based access
+- Validate operator `.ssh` and `authorized_keys`
+- Validate effective SSH key-auth capability
+
+#### Explicitly Deferred to `harden-vps`
 - Disable password authentication
 - Disable root login
-- Validate effective SSH runtime config
+- Enforce final SSH hardening policy
 
 ### Slice 2: Docker Runtime Baseline
 

@@ -13,8 +13,19 @@ DEPLOY consumes runtime.
 - harden-vps
 
 ## 4. audit-vps
-- read-only
-- classifies: OK / SANEABLE / BLOCKED
+
+- MUST be read-only
+- MUST classify host using the canonical audit classification model:
+  - CLEAN
+  - COMPATIBLE
+  - SANEABLE
+  - BLOCKED
+
+### Contract-level shorthand
+
+When this contract uses the term `OK`, it means:
+text
+CLEAN or COMPATIBLE
 
 ## 5. init-vps
 - deterministic
@@ -49,12 +60,34 @@ Must pass:
 - docker ps
 
 ## 9. Classification
-SANEABLE:
-- docker missing
 
-BLOCKED:
-- broken docker
-- ambiguous state
+### CLEAN
+Host has minimal relevant prior state and no conflicts for the current HOST baseline.
+
+### COMPATIBLE
+Host already satisfies the current HOST baseline.
+
+### SANEABLE
+Host is not aligned yet but can be normalized safely by documented `init-vps` slices.
+
+Examples:
+- operator user missing
+- SSH access filesystem missing but safely creatable
+- Docker missing
+- Docker Compose v2 missing
+- Docker service stopped but safely startable
+- operator missing Docker group membership
+
+### BLOCKED
+Host state is unsafe, broken, or ambiguous.
+
+Examples:
+- unsupported OS
+- invalid SSH daemon configuration
+- ambiguous operator user or filesystem state
+- broken Docker daemon
+- ambiguous Docker installation
+- conflicting Docker package sources
 
 ## 10. Allowed
 - install docker
