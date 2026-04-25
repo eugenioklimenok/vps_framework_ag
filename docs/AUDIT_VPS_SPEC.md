@@ -2,9 +2,9 @@
 
 ## 1. Purpose
 
-This document defines the current technical specification for the `audit-vps` command.
+This document defines the **current technical specification** of the `audit-vps` command.
 
-It translates the HOST contract into:
+It translates the current HOST contract into:
 
 - explicit Python responsibilities
 - concrete runtime evidence commands
@@ -12,9 +12,8 @@ It translates the HOST contract into:
 - severity and classification effects
 - output requirements
 - deterministic exit behavior
-- Docker Runtime Baseline audit behavior
 
-This document is the implementation blueprint for `audit-vps`.
+This document is the current implementation blueprint for `audit-vps`.
 
 ---
 
@@ -22,12 +21,12 @@ This document is the implementation blueprint for `audit-vps`.
 
 This specification is governed by:
 
-1. `FRAMEWORK_ARCHITECTURE_MODEL.md`
-2. `ENGINEERING_RULES.md`
-3. `HOST_BASELINE_FDD.md`
-4. `HOST_BASELINE_TDD.md`
-5. `HOST_BASELINE_CONTRACT.md`
-6. `PYTHON_IMPLEMENTATION_BASELINE.md`
+- `FRAMEWORK_ARCHITECTURE_MODEL.md`
+- `ENGINEERING_RULES.md`
+- `HOST_BASELINE_FDD.md`
+- `HOST_BASELINE_TDD.md`
+- `HOST_BASELINE_CONTRACT.md`
+- `PYTHON_IMPLEMENTATION_BASELINE.md`
 
 If this specification conflicts with a higher-level HOST document, this specification MUST be corrected.
 
@@ -68,9 +67,8 @@ HOST
 - create users
 - install packages
 - modify SSH configuration
-- modify UFW
+- change UFW state
 - modify Docker
-- start or stop services
 - write system state changes of any kind
 
 ---
@@ -81,11 +79,11 @@ The audit command may require explicit inputs depending on the checks being run.
 
 ### Current minimum relevant input
 
-For the current HOST baseline, the relevant explicit input is:
+For the current executable HOST baseline, the relevant explicit input is:
 
 - operator user identity
 
-### Optional future inputs
+### Optional future input
 
 Future audit expansion may additionally use inputs such as:
 
@@ -101,33 +99,27 @@ The audit implementation MUST NOT hardcode a fixed operator identity such as a l
 
 ## 5. Python Implementation Model
 
-### Implementation language
+### 5.1 Implementation Language
 
 The command MUST be implemented in:
 
-```text
-Python 3.12+
-```
+→ **Python 3.12+**
 
-### CLI layer
+### 5.2 CLI Layer
 
 The command MUST be exposed through:
 
-```text
-Typer
-```
+→ **Typer**
 
-### Execution model
+### 5.3 Execution Model
 
 System evidence MUST be collected via:
 
-```text
-subprocess.run() wrappers in Python
-```
+→ `subprocess.run()` wrappers in Python
 
-Each check MUST use Python as the execution layer, even when evidence comes from native system commands.
+Each check MUST use Python as the execution layer, even when the evidence comes from native system commands.
 
-### Modeling rule
+### 5.4 Modeling Rule
 
 Each audit check MUST be represented in Python as an explicit object or structure containing at minimum:
 
@@ -167,7 +159,7 @@ Each result MUST include:
 - `message`
 - `classification_impact`
 
-Conceptual shape:
+Example conceptual shape:
 
 ```python
 CheckResult(
@@ -194,15 +186,15 @@ Final host classification MUST be derived after all checks complete.
 - `SANEABLE`
 - `BLOCKED`
 
-### Classification intent
+### Classification intent in current baseline
 
-The audit baseline is designed to determine whether the host can safely support documented `init-vps` reconciliation slices.
+The current audit baseline is designed to determine whether the host can safely support the current `init-vps` slice.
 
 ### Rules
 
 #### BLOCKED
 
-Use when any critical condition makes current reconciliation unsafe or ambiguous.
+Use when any critical condition makes the current reconciliation slice unsafe or ambiguous.
 
 Typical causes:
 
@@ -212,12 +204,11 @@ Typical causes:
 - effective SSH key-auth support cannot be trusted
 - ambiguous operator user state
 - ambiguous operator home or SSH-access filesystem state
-- broken or ambiguous Docker runtime state
 - critical safety conditions that prevent trustworthy reconciliation
 
 #### SANEABLE
 
-Use when host state is not yet aligned but can be normalized safely by documented `init-vps` slices.
+Use when host state is not yet aligned but can be normalized safely by the current slice.
 
 Typical causes:
 
@@ -226,41 +217,26 @@ Typical causes:
 - `.ssh` missing
 - `authorized_keys` missing
 - safe permission or ownership repair needed
-- Docker Engine missing
-- Docker Compose v2 plugin missing
-- Docker service stopped or disabled but safely startable/enablable
-- operator missing Docker group membership
 
 #### COMPATIBLE
 
-Use when the host already satisfies the current baseline or only has minor acceptable deviations.
+Use when the host already satisfies the current slice baseline or only has minor acceptable deviations.
 
 #### CLEAN
 
-Use when the host has minimal prior relevant state and no meaningful conflicts for the current baseline.
+Use when the host has minimal prior relevant state and no meaningful conflicts for the current slice.
 
-### Priority rule
+### Classification Priority
 
 If multiple conditions exist, priority MUST be:
 
-```text
-BLOCKED > SANEABLE > COMPATIBLE > CLEAN
-```
+`BLOCKED > SANEABLE > COMPATIBLE > CLEAN`
 
 ---
 
 ## 8. Check Group Definitions
 
-The current executable audit baseline includes the checks needed for safe HOST gating at the current stage.
-
-Check families:
-
-- OS
-- USER
-- SSH
-- FILESYSTEM / SSH ACCESS
-- SYSTEM SAFETY
-- DOCKER RUNTIME
+The current executable audit baseline is intentionally limited to the checks needed for safe HOST gating at the current stage.
 
 ---
 
@@ -268,8 +244,7 @@ Check families:
 
 ### CHECK_OS_01 — Supported Operating System
 
-**Goal**
-
+**Goal**  
 Verify that the host runs a supported Ubuntu release.
 
 **Evidence command**
@@ -303,8 +278,7 @@ cat /etc/os-release
 
 ### CHECK_OS_02 — CPU Architecture
 
-**Goal**
-
+**Goal**  
 Verify supported architecture.
 
 **Evidence command**
@@ -332,8 +306,7 @@ uname -m
 
 ### CHECK_USER_01 — Operator User Exists
 
-**Goal**
-
+**Goal**  
 Verify whether the operator user exists.
 
 **Evidence command**
@@ -358,8 +331,7 @@ id <operator_user>
 
 ### CHECK_USER_02 — Operator User Home Mapping
 
-**Goal**
-
+**Goal**  
 Verify the current passwd mapping for the operator user.
 
 **Evidence command**
@@ -386,7 +358,7 @@ getent passwd <operator_user>
 **FAIL**
 
 - passwd data is malformed or ambiguous
-- user appears to map to unsafe or conflicting home state
+- user appears to map to an unsafe or clearly conflicting home state
 
 **Classification impact**
 
@@ -399,8 +371,7 @@ getent passwd <operator_user>
 
 ### CHECK_SSH_01 — sshd Binary and Syntax Validity
 
-**Goal**
-
+**Goal**  
 Verify SSH daemon availability and valid syntax.
 
 **Evidence command**
@@ -428,8 +399,7 @@ sshd -t
 
 ### CHECK_SSH_02 — Effective SSH Runtime Configuration
 
-**Goal**
-
+**Goal**  
 Inspect effective SSH configuration rather than raw file contents.
 
 **Evidence command**
@@ -438,8 +408,7 @@ Inspect effective SSH configuration rather than raw file contents.
 sshd -T
 ```
 
-**Expected parsing**
-
+**Expected parsing**  
 At minimum:
 
 - `pubkeyauthentication`
@@ -455,7 +424,7 @@ At minimum:
 
 - password authentication is enabled
 - root-login policy is not yet hardened
-- other non-blocking deviations acceptable before `harden-vps`
+- other non-blocking deviations that are acceptable before `harden-vps`
 
 **FAIL**
 
@@ -467,7 +436,7 @@ At minimum:
 - `WARN` → non-blocking, usually `COMPATIBLE` or `SANEABLE` depending on other evidence
 - `FAIL` → `BLOCKED`
 
-### Interpretation rule
+### Interpretation Rule
 
 Because SSH hardening is deferred from the current `init-vps` slice:
 
@@ -480,8 +449,7 @@ Because SSH hardening is deferred from the current `init-vps` slice:
 
 ### CHECK_FS_01 — Operator Home Path State
 
-**Goal**
-
+**Goal**  
 Verify the state of the operator home path relevant to safe reconciliation.
 
 **Evidence command**
@@ -493,8 +461,7 @@ stat -c "%F %U %G %a %n" <expected_operator_home>
 **OK**
 
 - path exists as a directory with compatible ownership expectations
-- path is absent in a way that remains safely creatable by the current slice
-- mode is a secure compatible mode, currently `750` or `755`
+- or path is absent in a way that remains safely creatable by the current slice
 
 **WARN**
 
@@ -502,7 +469,7 @@ stat -c "%F %U %G %a %n" <expected_operator_home>
 
 **FAIL**
 
-- path exists in conflicting or ambiguous form
+- path exists in a clearly conflicting or ambiguous form
 - path is not a directory when a directory is required
 - ownership or state indicates unsafe reconciliation risk
 
@@ -511,23 +478,11 @@ stat -c "%F %U %G %a %n" <expected_operator_home>
 - `WARN` → `SANEABLE`
 - `FAIL` → `BLOCKED`
 
-### Home permission note
-
-The operator home may be valid with either:
-
-- `750`
-- `755`
-
-This flexibility applies to the operator home only.
-
-It MUST NOT relax `.ssh` or `authorized_keys` checks.
-
 ---
 
 ### CHECK_FS_02 — Operator SSH Access Paths
 
-**Goal**
-
+**Goal**  
 Verify the state of `.ssh` and `authorized_keys` relevant to safe reconciliation.
 
 **Evidence commands**
@@ -565,8 +520,7 @@ stat -c "%F %U %G %a %n" <expected_operator_home>/.ssh/authorized_keys
 
 ### CHECK_SYS_01 — Root Filesystem Free Space
 
-**Goal**
-
+**Goal**  
 Verify adequate free space for safe baseline operations.
 
 **Evidence command**
@@ -577,7 +531,7 @@ df -Pk /
 
 **Expected parsing**
 
-- available space in deterministic machine-readable form
+- available space in a deterministic machine-readable form
 
 **OK**
 
@@ -596,335 +550,27 @@ df -Pk /
 - `WARN` → usually `SANEABLE`
 - `FAIL` → `BLOCKED`
 
-### Threshold rule
+### Threshold Rule
 
 Threshold values must be documented in implementation or config and must not be hidden heuristics.
 
 ---
 
-## 8.6 DOCKER RUNTIME Checks
+## 9. Deferred Check Families
 
-This check family supports the Docker Runtime Baseline required by DEPLOY.
+The following check families are intentionally **out of the current executable audit baseline** unless later documentation explicitly brings them back into scope:
 
-The checks are read-only.
-
-They MUST NOT install, start, stop, enable, or modify Docker.
-
----
-
-### CHECK_DOCKER_01 — Docker CLI Availability
-
-**Goal**
-
-Verify whether Docker CLI is available.
-
-**Evidence command**
-
-```bash
-docker --version
-```
-
-**OK**
-
-- command exists
-- command exits successfully
-- output identifies Docker CLI
-
-**WARN**
-
-- Docker CLI is missing
-
-**FAIL**
-
-- Docker CLI exists but execution fails in a way that suggests a broken or ambiguous installation
-
-**Classification impact**
-
-- `WARN` → `SANEABLE`
-- `FAIL` → `BLOCKED`
-
----
-
-### CHECK_DOCKER_02 — Docker Daemon State
-
-**Goal**
-
-Verify whether Docker daemon is active and reachable.
-
-**Evidence commands**
-
-```bash
-systemctl is-active docker
-docker info
-```
-
-**OK**
-
-- `docker.service` is active
-- `docker info` succeeds
-
-**WARN**
-
-- Docker is installed but service is stopped or disabled in a state that appears safely startable by `init-vps`
-
-**FAIL**
-
-- Docker service exists but is failed
-- Docker daemon cannot be reached due to ambiguous or broken runtime state
-- repeated service failures are detected by available evidence
-- service manager evidence is unavailable in a way that prevents trust
-
-**Classification impact**
-
-- `WARN` → `SANEABLE`
-- `FAIL` → `BLOCKED`
-
----
-
-### CHECK_DOCKER_03 — Docker Compose v2 Availability
-
-**Goal**
-
-Verify that Docker Compose v2 is available through the Docker CLI plugin model.
-
-**Evidence command**
-
-```bash
-docker compose version
-```
-
-**OK**
-
-- `docker compose version` succeeds
-
-**WARN**
-
-- Docker exists but Compose v2 plugin is missing
-
-**FAIL**
-
-- `docker compose` exists but fails in a way that suggests a broken or ambiguous installation
-
-**Classification impact**
-
-- `WARN` → `SANEABLE`
-- `FAIL` → `BLOCKED`
-
-### Legacy compose rule
-
-The legacy binary:
-
-```bash
-docker-compose
-```
-
-may be detected for diagnostic messaging.
-
-However, `docker-compose` v1 alone MUST NOT satisfy the Docker Runtime Baseline.
-
-DEPLOY requires `docker compose`.
-
----
-
-### CHECK_DOCKER_04 — Operator Docker Group Membership
-
-**Goal**
-
-Verify whether the operator user is configured for non-root Docker access.
-
-**Evidence command**
-
-```bash
-id -nG <operator_user>
-```
-
-**OK**
-
-- operator user is a member of the `docker` group
-
-**WARN**
-
-- operator user exists but is not a member of the `docker` group
-- operator user is missing and therefore Docker access cannot yet be assigned
-
-**FAIL**
-
-- group membership evidence is ambiguous or unavailable for an existing operator user
-- Docker group state is inconsistent or unsafe to trust
-
-**Classification impact**
-
-- `WARN` → `SANEABLE`
-- `FAIL` → `BLOCKED`
-
----
-
-### CHECK_DOCKER_05 — Operator Docker Socket Access
-
-**Goal**
-
-Verify whether the operator context can access Docker without root privileges.
-
-**Evidence command**
-
-Preferred when executable safely under operator context:
-
-```bash
-sudo -u <operator_user> docker ps
-```
-
-or equivalent controlled subprocess behavior documented by implementation.
-
-**OK**
-
-- `docker ps` succeeds for operator context
-
-**WARN**
-
-- operator group membership has been configured but current session refresh may be required
-- operator cannot yet access Docker due to group membership not taking effect
-
-**FAIL**
-
-- Docker socket permissions are inconsistent
-- operator access fails despite expected group membership and daemon readiness
-- failure indicates broken or ambiguous Docker socket/runtime state
-
-**Classification impact**
-
-- `WARN` → `SANEABLE`
-- `FAIL` → `BLOCKED`
-
-### Session refresh rule
-
-If `init-vps` adds the operator to the Docker group, a new login session may be required.
-
-Audit may report this as `WARN` when evidence indicates the system is otherwise saneable.
-
----
-
-## 9. Docker Runtime Classification Examples
-
-### Example A — Docker missing
-
-Evidence:
-
-- `docker --version` command not found
-
-Classification:
-
-```text
-SANEABLE
-```
-
-Reason:
-
-- documented Docker Runtime Baseline slice can install Docker.
-
----
-
-### Example B — Docker installed, Compose v1 only
-
-Evidence:
-
-- `docker --version` succeeds
-- `docker-compose --version` succeeds
-- `docker compose version` fails
-
-Classification:
-
-```text
-SANEABLE
-```
-
-Reason:
-
-- Docker exists, but Compose v2 plugin is missing.
-- `init-vps` can install or normalize Compose v2 if state is not ambiguous.
-
----
-
-### Example C — Docker service failed
-
-Evidence:
-
-- `docker --version` succeeds
-- `systemctl is-active docker` returns `failed`
-- `docker info` cannot connect to daemon
-
-Classification:
-
-```text
-BLOCKED` or `SANEABLE` depending on failure evidence
-```
-
-Rule:
-
-- If daemon is merely stopped and safely startable → `SANEABLE`
-- If daemon is failed, repeatedly crashing, or ambiguous → `BLOCKED`
-
----
-
-### Example D — Docker ready but operator lacks group access
-
-Evidence:
-
-- Docker CLI OK
-- Docker daemon OK
-- Compose v2 OK
-- operator not in `docker` group
-
-Classification:
-
-```text
-SANEABLE
-```
-
-Reason:
-
-- Docker group membership can be reconciled by `init-vps`.
-
----
-
-### Example E — Docker fully ready
-
-Evidence:
-
-- `docker --version` OK
-- `docker compose version` OK
-- Docker daemon active
-- `docker ps` works for operator context
-
-Classification:
-
-```text
-COMPATIBLE
-```
-
-unless other host checks produce higher-priority results.
-
----
-
-## 10. Deferred Check Families
-
-The following check families are intentionally out of the current executable audit baseline unless later documentation explicitly brings them into scope:
-
+- Docker installation and normalization checks
 - UFW baseline checks
+- package baseline convergence checks
 - timezone target checks
-- broad package baseline convergence checks beyond Docker Runtime Baseline
-- reverse proxy checks
-- TLS checks
-- monitoring checks
-- application runtime checks
-- backup freshness checks
-- cross-host fleet audit
-- automatic remediation
+- broad operator environment scaffolding checks beyond current SSH access scope
 
 These may return in future documented HOST slices, but must not be silently assumed now.
 
 ---
 
-## 11. Python Function Mapping Guidance
+## 10. Python Function Mapping Guidance
 
 Recommended naming pattern:
 
@@ -937,11 +583,6 @@ Recommended naming pattern:
 - `run_check_operator_home_state()`
 - `run_check_operator_ssh_paths()`
 - `run_check_root_free_space()`
-- `run_check_docker_cli_available()`
-- `run_check_docker_daemon_state()`
-- `run_check_docker_compose_v2_available()`
-- `run_check_operator_docker_group()`
-- `run_check_operator_docker_access()`
 
 Each function SHOULD:
 
@@ -953,7 +594,7 @@ Each function SHOULD:
 
 ---
 
-## 12. Subprocess Execution Rules
+## 11. Subprocess Execution Rules
 
 All subprocess execution MUST follow these rules:
 
@@ -973,9 +614,9 @@ Recommended wrapper responsibilities:
 
 ---
 
-## 13. Output Requirements
+## 12. Output Requirements
 
-### Human-readable output
+### 12.1 Human-readable Output
 
 The command MUST provide a readable summary grouped by category.
 
@@ -986,7 +627,6 @@ Recommended grouping:
 - SSH
 - FILESYSTEM
 - SYSTEM
-- DOCKER
 
 Each line SHOULD contain:
 
@@ -994,7 +634,7 @@ Each line SHOULD contain:
 - check id
 - short message
 
-### Structured output
+### 12.2 Structured Output
 
 The implementation SHOULD be ready for structured export, even if JSON is not enabled in the first iteration.
 
@@ -1010,7 +650,7 @@ Suggested internal structure:
 
 ---
 
-## 14. Exit Code Rules
+## 13. Exit Code Rules
 
 Recommended deterministic exit codes:
 
@@ -1023,7 +663,7 @@ This mapping MUST remain deterministic.
 
 ---
 
-## 15. Determinism Rules
+## 14. Determinism Rules
 
 Given the same host state, same inputs, and same command invocation, `audit-vps` MUST produce:
 
@@ -1035,7 +675,7 @@ No hidden fallback behavior or undocumented heuristics are allowed.
 
 ---
 
-## 16. Forbidden Implementation Patterns
+## 15. Forbidden Implementation Patterns
 
 The following are explicitly forbidden:
 
@@ -1046,12 +686,10 @@ The following are explicitly forbidden:
 - hardcoded operator usernames in business logic
 - undocumented automatic behavior
 - skipping evidence collection and assuming defaults
-- treating `docker-compose` v1 as equivalent to Docker Compose v2 without contract approval
-- installing or starting Docker from `audit-vps`
 
 ---
 
-## 17. Implementation Priority
+## 16. Implementation Priority
 
 Recommended implementation order:
 
@@ -1062,22 +700,20 @@ Recommended implementation order:
 5. SSH checks
 6. filesystem checks
 7. system safety checks
-8. Docker runtime checks
-9. classification reducer
-10. Typer CLI output layer
+8. classification reducer
+9. Typer CLI output layer
 
 ---
 
-## 18. Final Statement
+## 17. Final Statement
 
-`audit-vps` is the diagnostic foundation of the HOST baseline.
+`audit-vps` is the diagnostic foundation of the current HOST baseline.
 
 Its reliability determines whether:
 
 - host classification is trustworthy
 - `init-vps` can act safely
-- Docker Runtime Baseline reconciliation can proceed
-- DEPLOY can later consume a validated runtime without installing host dependencies
+- the framework can proceed without hidden assumptions
 
 For that reason, `audit-vps` MUST be:
 
@@ -1087,4 +723,3 @@ For that reason, `audit-vps` MUST be:
 - evidence-driven
 - contract-aligned
 - free of hardcoded operator assumptions
-- explicit about Docker Runtime Baseline readiness

@@ -7,11 +7,10 @@ This document defines the **technical architecture** of the HOST module.
 It describes:
 
 - how HOST is implemented in Python
-- how `audit-vps`, `init-vps`, and `harden-vps` are separated technically
+- how its commands are separated technically
 - how shared components are reused
-- how the current `init-vps` reconciliation slices fit into the architecture
-- how `audit-vps` supports safe gating for host reconciliation
-- how the Docker Runtime Baseline is prepared and validated before DEPLOY consumes it
+- how the current `init-vps` reconciliation slice fits into the architecture
+- how the current `audit-vps` baseline supports safe gating for that slice
 
 This document is prescriptive and must be used as technical implementation guidance together with the architecture model, engineering rules, HOST FDD, HOST contract, HOST audit specification, and the shared Python baseline.
 
@@ -23,9 +22,9 @@ For HOST work, this document defines the **technical source of truth** below the
 
 It is governed by:
 
-1. `FRAMEWORK_ARCHITECTURE_MODEL.md`
-2. `ENGINEERING_RULES.md`
-3. `HOST_BASELINE_FDD.md`
+- `FRAMEWORK_ARCHITECTURE_MODEL.md`
+- `ENGINEERING_RULES.md`
+- `HOST_BASELINE_FDD.md`
 
 It governs, technically, the lower-level HOST documents:
 
@@ -49,7 +48,6 @@ The HOST module technical design MUST provide:
 - high testability
 - Codex-compatible structure
 - safe development on Windows with Linux-targeted host logic
-- documented Docker Runtime Baseline preparation for DEPLOY
 
 Read-only behavior is a property of `audit-vps`, not of the entire HOST module.
 
@@ -65,25 +63,13 @@ HOST is implemented as a Python module containing three command families:
 
 Technically, HOST must support:
 
-- host audit execution
+- audit execution
 - host classification
-- operator user and SSH-access reconciliation
-- Docker runtime reconciliation
+- reconciliation orchestration
 - runtime validation
 - command-level exit code control
-- separate hardening behavior
 
 HOST must not contain responsibilities belonging to PROJECT, DEPLOY, or OPERATE.
-
-### HOST responsibility boundary
-
-HOST prepares the server baseline.
-
-This includes making required host-level runtime capabilities available, including Docker Engine and Docker Compose v2 when the Docker Runtime Baseline slice is in scope.
-
-DEPLOY consumes that runtime.
-
-DEPLOY MUST NOT install, repair, or normalize Docker.
 
 ---
 
@@ -122,7 +108,6 @@ framework/
 ### Structure Rule
 
 A generic `framework/core/` layer is not part of the canonical HOST baseline.
-
 Shared functionality should live in explicitly owned technical layers.
 
 ---
@@ -144,8 +129,7 @@ Responsibilities:
 
 - represent check results
 - represent classification values
-- represent reconciliation outcomes
-- represent validation outcomes
+- represent reconciliation outcomes where needed
 - avoid scattered string literals for status or classification
 
 ### Subprocess Wrapper
@@ -173,7 +157,7 @@ Responsibilities:
 
 - perform preflight and gate logic
 - stop on blocked conditions
-- execute explicit reconciliation slices in order
+- execute explicit reconciliation steps in order
 - execute post-action validation
 - produce deterministic phase output
 
@@ -184,17 +168,6 @@ Responsibilities:
 - verify achieved runtime state after mutation
 - expose explicit validation functions
 - fail closed when guarantees cannot be confirmed
-
-### Docker Runtime Layer
-
-Responsibilities:
-
-- detect Docker Engine state
-- detect Docker Compose v2 availability
-- install or normalize Docker runtime only when allowed by the documented slice
-- enable and start `docker.service`
-- ensure the operator user can access Docker where policy requires it
-- validate runtime usability through real commands
 
 ---
 
@@ -214,7 +187,7 @@ Responsibilities:
 
 ### Current technical scope
 
-The audit baseline must provide enough evidence to support safe gating for current `init-vps` slices.
+The current audit baseline must provide enough evidence to support safe gating for the current `init-vps` slice.
 
 This includes checks for:
 
@@ -224,7 +197,6 @@ This includes checks for:
 - effective key-auth capability
 - operator-related user state
 - operator SSH access filesystem state
-- Docker runtime availability and usability where the Docker Runtime Baseline is in scope
 - essential safety signals required to avoid ambiguous reconciliation
 
 ### Architectural constraints
@@ -233,7 +205,7 @@ This includes checks for:
 - no hidden side effects
 - no dependence on undocumented external state
 
-The detailed current check behavior is governed by `AUDIT_VPS_SPEC.md`.
+The detailed current check behavior is governed by the audit specification.
 
 ---
 
@@ -245,7 +217,7 @@ The detailed current check behavior is governed by `AUDIT_VPS_SPEC.md`.
 
 - reuse or perform internal equivalent of host classification gate
 - abort on `BLOCKED` classification
-- execute only documented reconciliation slices
+- execute only the currently allowed reconciliation slice
 - validate in-scope changes after execution
 - emit deterministic human-readable phase output
 
@@ -293,17 +265,19 @@ The detailed current check behavior is governed by `AUDIT_VPS_SPEC.md`.
 2. explicit input validation
 3. preflight / audit gate evaluation
 4. abort if host classification is `BLOCKED`
-5. execute operator user and SSH-access reconciliation slice
-6. execute Docker Runtime Baseline slice when in scope
-7. execute post-action validation for all in-scope slices
+5. operator user reconciliation
+6. operator filesystem reconciliation (`home`, `.ssh`, `authorized_keys` in current slice)
+7. post-action validation
 8. final decision rendering
 9. exit code emission
+
+This flow is currently limited to the first controlled reconciliation slice.
 
 ---
 
 ## 9. Current `init-vps` Slice Architecture
 
-The implementation must remain modular and responsibility-separated.
+The current implementation slice should remain modular and responsibility-separated.
 
 ### Recommended module boundaries
 
@@ -316,219 +290,61 @@ The implementation must remain modular and responsibility-separated.
   - home path checks
   - `.ssh` creation or reuse
   - `authorized_keys` creation or safe update
-  - ownership and permission reconciliation for in-scope SSH paths
-
-- `reconcile_docker.py`
-  - Docker package source inspection
-  - Docker Engine installation or reuse
-  - Docker Compose v2 plugin installation or reuse
-  - `docker.service` enable/start behavior
-  - operator Docker group membership reconciliation
+  - ownership and permission reconciliation for in-scope paths
 
 - `validate.py`
   - post-action validation of user and SSH filesystem state
   - key presence validation
   - permission and ownership verification
 
-- `validate_docker.py`
-  - Docker binary validation
-  - Docker daemon validation
-  - Docker Compose v2 validation
-  - operator Docker access validation
-
 - `runner.py`
-  - orchestration of gate → reconcile slices → validate flow
+  - orchestration of gate → reconcile → validate flow
   - deterministic output sections
   - exit code decisions
 
----
+### Current slice technical boundaries
 
-## 10. Slice 1 — Operator User and SSH Access
-
-### Purpose
-
-Prepare the operator identity and SSH key-based access needed to operate the VPS safely.
-
-### Allowed mutation
+Allowed mutation in the current slice:
 
 - create or reuse operator user
 - ensure operator home exists in expected form
 - ensure `.ssh` exists
 - ensure `authorized_keys` exists
-- ensure target public key is present
+- ensure target key is present
 - ensure safe ownership and permissions for in-scope paths
 
-### Validation requirements
-
-Validation must confirm:
-
-- operator user exists
-- expected operator home exists
-- `.ssh` exists
-- `authorized_keys` exists
-- ownership is correct for in-scope paths
-- permissions are correct for in-scope paths
-- target public key is present
-
-### Home permission policy
-
-The operator home directory may be considered valid when it is owned by the operator and has a secure compatible permission mode.
-
-The current allowed secure modes are:
-
-- `750`
-- `755`
-
-This flexibility applies to the operator home only.
-
-It MUST NOT relax validation for `.ssh` or `authorized_keys`.
-
-### Forbidden mutation in this slice
+Forbidden mutation in the current slice:
 
 - Docker install or normalization
-- package baseline repair outside documented Docker runtime slice
+- package install or repair
 - timezone mutation
 - UFW mutation
 - `sshd_config` mutation
 - password authentication disablement
 - root login restriction
+- automated sudo or NOPASSWD policy enforcement
 - unrelated filesystem mutation
 
 ---
 
-## 11. Slice 2 — Docker Runtime Baseline
-
-### Purpose
-
-Prepare the container runtime required by DEPLOY.
-
-The Docker Runtime Baseline exists because DEPLOY must not install or repair the host runtime. DEPLOY validates and consumes the runtime only.
-
-### Runtime standard
-
-The required runtime baseline is:
-
-- Docker Engine
-- Docker Compose v2 plugin exposed as `docker compose`
-
-Legacy `docker-compose` v1 is not the required baseline runtime.
-
-It may be detected for diagnostics, but it MUST NOT satisfy the Docker Compose v2 baseline unless a future contract explicitly allows compatibility fallback.
-
-### Allowed mutation
-
-Within this slice, `init-vps` MAY:
-
-- install required package prerequisites for Docker official repository usage
-- configure Docker official APT repository
-- install Docker Engine packages
-- install Docker Compose v2 plugin
-- enable `docker.service`
-- start `docker.service`
-- add operator user to the `docker` group
-- validate Docker runtime usability
-
-### Required package source policy
-
-The Docker Runtime Baseline SHOULD install Docker from the official Docker package source for Ubuntu-compatible systems.
-
-The implementation MUST NOT silently accept an ambiguous or broken mixed Docker installation as valid.
-
-### Required technical checks before mutation
-
-Before attempting Docker reconciliation, the implementation should inspect:
-
-- OS support
-- package manager availability
-- existing Docker binary state
-- existing Compose state
-- Docker service state
-- operator Docker access state
-- signs of conflicting or ambiguous Docker installations
-
-### SANEABLE runtime states
-
-Examples of saneable states:
-
-- Docker is missing
-- Docker Compose v2 plugin is missing
-- Docker service is installed but disabled or stopped
-- operator user is not in `docker` group
-- Docker official repository is missing but safely configurable
-
-### BLOCKED runtime states
-
-Examples of blocked states:
-
-- unsupported OS for current Docker installation policy
-- package manager unavailable or broken
-- Docker binary exists but cannot be identified safely
-- Docker service exists but fails repeatedly after reconciliation
-- Docker socket ownership or permissions are ambiguous
-- incompatible runtime state prevents trustworthy validation
-- repository configuration conflicts in a way the framework cannot safely reconcile
-
-### Docker validation requirements
-
-Validation must confirm:
-
-- `docker --version` succeeds
-- `docker compose version` succeeds
-- `docker.service` is active
-- Docker daemon is reachable
-- operator user is a member of the `docker` group where policy requires non-root usage
-- `docker ps` succeeds for the intended operator context
-
-### Session refresh note
-
-Adding the operator to the `docker` group may require a new login session before non-root Docker access is effective.
-
-The command output SHOULD make this explicit when applicable.
-
-The framework MUST NOT claim operator Docker access is validated in the current shell if group membership has not taken effect.
-
-### Forbidden mutation in this slice
-
-- project deployment
-- compose stack startup for application projects
-- image build for application projects
-- application runtime smoke tests
-- reverse proxy configuration
-- TLS provisioning
-- DNS configuration
-- backups
-- monitoring stack deployment
-- arbitrary runtime cleanup outside Docker baseline preparation
-
----
-
-## 12. Input and Configuration Model
+## 10. Input and Configuration Model
 
 The current HOST technical design requires explicit inputs.
 
-At minimum, relevant technical inputs are:
+At minimum, the relevant technical inputs for the current slice are:
 
 - operator user identity
 - public key or key source
-- future bounded policy flags explicitly approved by contract
-
-For Docker Runtime Baseline work, implementation MAY use documented policy defaults such as:
-
-- required Docker runtime family
-- required Compose version family
-- official Docker repository target for supported Ubuntu releases
-
-These policy defaults must be documented in config or contract and must not be hidden heuristics.
+- any bounded policy flags explicitly approved by contract
 
 ### Rule
 
-Command-critical values must be obtained through explicit command inputs or structured documented configuration.
-
-They must not be embedded as unexplained constants in business logic.
+These values must be obtained through explicit command inputs or structured configuration.
+They must not be embedded as hidden constants in business logic.
 
 ---
 
-## 13. Data and State Modeling
+## 11. Data and State Modeling
 
 ### Audit-side modeling
 
@@ -546,46 +362,23 @@ Reconciliation and validation should use explicit return values or dataclasses t
 
 - action taken
 - state reused
-- state repaired
-- state installed
 - ambiguity detected
 - validation passed or failed
 - fatal safety stop required
-
-### Docker-side modeling
-
-Docker runtime state should be represented explicitly.
-
-Recommended modeling categories:
-
-- `DockerRuntimeState`
-  - `MISSING`
-  - `PARTIAL`
-  - `READY`
-  - `BROKEN`
-  - `AMBIGUOUS`
-
-- `DockerReconcileAction`
-  - `INSTALL`
-  - `REUSE`
-  - `REPAIR_SERVICE`
-  - `ADD_GROUP`
-  - `VALIDATE`
-  - `BLOCK`
 
 The technical design should avoid hidden booleans and implicit state transitions.
 
 ---
 
-## 14. Determinism and Idempotency
+## 12. Determinism and Idempotency
 
 ### Determinism
 
-Given the same inputs and same host state, HOST commands must produce the same decisions, validations, and exit codes.
+Given the same inputs and same host state, HOST commands must produce the same decisions, same validations, and same exit codes.
 
 ### Idempotency for `init-vps`
 
-The reconciliation slices must be safe to re-run.
+The current reconciliation slice must be safe to re-run.
 
 This requires:
 
@@ -593,13 +386,11 @@ This requires:
 - preserving compatible existing data
 - not duplicating the same authorized key
 - not truncating unrelated keys
-- not reinstalling Docker unnecessarily when a compatible runtime is already valid
-- not repeatedly rewriting repository configuration without need
-- not restarting services unnecessarily unless required for reconciliation or validation
+- not recreating already-correct compatible state
 
 ---
 
-## 15. Safety and Abort Model
+## 13. Safety and Abort Model
 
 HOST technical behavior must fail closed.
 
@@ -609,8 +400,6 @@ Execution must stop when:
 - filesystem state is ambiguous
 - user state is ambiguous
 - ownership or permissions cannot be safely guaranteed
-- Docker runtime state is ambiguous or broken beyond documented reconciliation
-- package installation prerequisites cannot be trusted
 - post-action validation fails
 - runtime execution error prevents contract fulfillment
 
@@ -618,13 +407,11 @@ No fallback heuristics are allowed for ambiguous mutation states.
 
 ---
 
-## 16. Cross-Platform Technical Behavior
+## 14. Cross-Platform Technical Behavior
 
 ### Linux
 
 Linux is the authoritative runtime target for real host inspection and reconciliation.
-
-Docker Runtime Baseline reconciliation is Linux-authoritative and expected primarily on supported Ubuntu-compatible VPS environments.
 
 ### Windows
 
@@ -639,7 +426,7 @@ Technical implications:
 
 ---
 
-## 17. Testing Strategy
+## 15. Testing Strategy
 
 ### Unit Tests
 
@@ -650,8 +437,6 @@ Required for:
 - subprocess wrapper behavior
 - user reconciliation logic
 - filesystem reconciliation logic
-- Docker runtime detection logic
-- Docker reconciliation planning logic
 - post-action validation logic
 - runner decision logic
 
@@ -672,40 +457,30 @@ Required for:
 - idempotent rerun behavior
 - preservation of unrelated authorized keys
 - duplicate key prevention
-- Docker missing → saneable classification
-- Docker broken/ambiguous → blocked classification
-- Docker ready → compatible classification
-- Compose v1 only → not accepted as Compose v2 baseline unless future contract changes
-- operator lacking Docker access → saneable or validation failure according to phase
 
 ### Cross-platform Tests
 
-System interactions must be mockable so tests pass in Windows development environments without requiring real Linux mutation.
+System interactions must be mocked so tests pass in Windows development environments without requiring real Linux mutation.
 
 ---
 
-## 18. Known Technical Constraints and Deferred Decisions
+## 16. Known Technical Constraints and Deferred Decisions
 
 The following remain intentionally open or deferred at the current stage:
 
 - structured configuration model for all future host inputs
-- final sudo and NOPASSWD automation policy
-- full package baseline beyond Docker Runtime Baseline
-- Docker runtime support for non-Ubuntu systems
-- support for rootless Docker
-- support for Podman or other container runtimes
-- multi-runtime selection
-- reverse proxy automation
-- TLS automation
-- monitoring agent installation
-- automatic reboot/session refresh orchestration after group membership changes
+- final operator user parameterization model across all commands
+- detailed sudo and NOPASSWD automation policy
+- full multi-slice `init-vps` orchestration beyond current scope
+- future Docker normalization implementation details
+- broad operator environment scaffolding beyond current SSH access slice
 - future audit expansion outside the current gating baseline
 
 These may be extended later, but only through documented, contract-aligned updates.
 
 ---
 
-## 19. Technical Freeze Statement
+## 17. Technical Freeze Statement
 
 The HOST technical baseline is frozen as:
 
@@ -714,17 +489,14 @@ The HOST technical baseline is frozen as:
 - with shared subprocess, classification, and validation foundations
 - with `audit-vps` as read-only diagnostic architecture
 - with `init-vps` as controlled slice-based reconciliation architecture
-- with Slice 1 for operator user and SSH access
-- with Slice 2 for Docker Runtime Baseline
 - with `harden-vps` reserved for post-initialization security enforcement
 
 The freeze applies to architecture and responsibility boundaries.
-
-It does not imply that every future HOST capability is implemented.
+It does not imply that all future HOST slices are already implemented.
 
 ---
 
-## 20. Final Statement
+## 18. Final Statement
 
 The HOST module technical design must support safe evolution without ambiguity.
 
@@ -734,8 +506,6 @@ Its architecture therefore requires:
 - explicit safety gates
 - explicit runtime validation
 - deterministic subprocess-driven behavior
-- slice-based reconciliation growth
-- Docker Runtime Baseline preparation before DEPLOY consumes runtime capabilities
-- no hidden repair behavior inside DEPLOY
+- slice-based growth of reconciliation logic without breaking contracts
 
 All HOST implementation must remain aligned with this design.

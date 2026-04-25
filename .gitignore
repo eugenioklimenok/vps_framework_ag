@@ -9,3 +9,4 @@ dist/
 build/
 pytest-cache-files-*
 *.old
+*.trash
