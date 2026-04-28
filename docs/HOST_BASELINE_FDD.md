@@ -1,3 +1,18 @@
+# Approved Additive Integration Notice — HOST Slice 02 Docker / Compose
+
+This document preserves the recovered original HOST baseline content below and extends it under the project **no-regression by extension-only** rule.
+
+Approved change:
+- Docker Engine installation and Docker Compose v2 plugin installation are now part of **HOST Phase 1** as **Slice 02 — Docker / Docker Compose Runtime Baseline**.
+- Existing Slice 01 operator user and SSH access behavior remains valid and unchanged.
+- Any older statement in the recovered baseline saying Docker installation, Docker normalization, or Docker checks are deferred is now narrowed to mean **deferred from Slice 01 only**.
+- The canonical definition for Docker / Compose behavior is the Slice 02 extension section added in this document.
+- `audit-vps` remains read-only.
+- `init-vps` may mutate Docker runtime state only under the documented Slice 02 rules.
+- DEPLOY consumes Docker runtime; DEPLOY must not silently install or repair Docker once Slice 02 is canonical.
+
+---
+
 # HOST Baseline — Functional Design Document (FDD)
 
 ## 1. Purpose
@@ -436,3 +451,151 @@ Its functional model is:
 - harden afterward
 
 All HOST implementation must remain aligned with this model.
+
+---
+
+# Approved Extension — HOST Slice 02 Docker / Docker Compose Runtime Baseline
+
+## 1. Extension Purpose
+
+This extension adds Docker Engine and Docker Compose v2 runtime preparation to HOST Phase 1 without removing or weakening the existing HOST Slice 01 baseline.
+
+Slice 01 remains responsible for operator user and SSH access preparation.
+
+Slice 02 is responsible for preparing the container runtime baseline required by DEPLOY.
+
+## 2. Functional Ownership
+
+HOST prepares runtime.
+
+DEPLOY consumes runtime.
+
+Therefore:
+
+- HOST MUST prepare Docker Engine when absent and safely supported.
+- HOST MUST prepare Docker Compose v2 plugin when absent and safely supported.
+- HOST MUST validate Docker runtime readiness before reporting success.
+- DEPLOY MUST NOT silently install, repair, or normalize Docker as a hidden deployment side effect.
+
+## 3. Slice 02 In Scope
+
+Slice 02 includes:
+
+- detecting Docker Engine installation state
+- detecting Docker daemon/service state
+- detecting Docker CLI usability
+- detecting Docker Compose v2 plugin availability through `docker compose`
+- installing Docker Engine when absent and safely supported
+- installing Docker Compose v2 plugin when absent and safely supported
+- enabling `docker.service` when required and safe
+- starting `docker.service` when required and safe
+- creating or reusing the `docker` group when required by the platform package model
+- adding the configured operator user to the `docker` group when required for DEPLOY operator execution
+- validating Docker Engine and Docker Compose availability before success is reported
+
+## 4. Slice 02 Out of Scope
+
+Slice 02 MUST NOT:
+
+- deploy application workloads
+- generate application `compose.yaml` files
+- create application directories
+- build application images
+- pull application images
+- start application containers
+- stop application containers
+- delete containers, images, volumes, or networks
+- manage registry authentication
+- configure reverse proxies
+- configure TLS certificates
+- perform application smoke tests
+- perform broad package repair unrelated to Docker runtime installation
+- perform unrelated host hardening
+
+## 5. Functional Guarantees
+
+For Slice 02, `init-vps` MUST:
+
+- install Docker Engine if Docker is absent and the host is supported
+- install Docker Compose v2 plugin if Compose is absent and the host is supported
+- reuse an existing compatible Docker runtime when already valid
+- avoid unnecessary reinstall when Docker is already compatible
+- refuse to overwrite, remove, or blindly normalize unknown Docker installations
+- classify broken, ambiguous, conflicting, unsupported, or untrusted Docker states as `BLOCKED` unless a safe documented normalization path exists
+- validate Docker CLI availability through runtime evidence
+- validate Docker daemon reachability through runtime evidence
+- validate Docker Compose v2 availability through runtime evidence
+- validate operator Docker access when DEPLOY is expected to execute Docker as the operator user
+- preserve the separation between HOST runtime preparation and DEPLOY workload execution
+
+## 6. Validation Requirements
+
+Slice 02 success requires runtime validation.
+
+At minimum, validation MUST confirm:
+
+```bash
+docker --version
+docker info
+docker compose version
+```
+
+When systemd is the supported service manager, validation SHOULD also confirm:
+
+```bash
+systemctl is-active docker
+```
+
+When DEPLOY is expected to run as the operator user, validation MUST confirm Docker access in the intended operator execution context.
+
+Success reporting without effective Docker runtime validation is forbidden.
+
+## 7. Classification Rules
+
+Docker-related state contributes to the canonical HOST classification model.
+
+### SANEABLE
+
+Examples:
+
+- Docker absent on a supported host with a safe installation path
+- Docker Compose v2 plugin absent on a supported host with a safe installation path
+- Docker service installed but stopped/disabled and safely startable
+- operator missing Docker group membership when that access is required and safely reconcilable
+
+### COMPATIBLE
+
+Examples:
+
+- Docker CLI exists
+- Docker daemon is reachable
+- Docker Compose v2 is available through `docker compose`
+- operator Docker access is valid when required
+
+### BLOCKED
+
+Examples:
+
+- unsupported OS or architecture for the approved Docker installation policy
+- broken package manager state
+- conflicting Docker package sources
+- ambiguous Docker installation
+- Docker daemon fails after documented reconciliation
+- Docker socket permissions are unsafe or untrusted
+- Compose path is ambiguous or broken
+
+The classification priority remains unchanged:
+
+```text
+BLOCKED > SANEABLE > COMPATIBLE > CLEAN
+```
+
+## 8. Documentation Change Record
+
+This extension does not remove any recovered HOST Slice 01 content.
+
+The only semantic change is that Docker installation and Docker normalization are no longer globally deferred. They are now:
+
+- out of scope for Slice 01
+- in scope for Slice 02
+- governed by this extension and the aligned HOST TDD, HOST Contract, and AUDIT VPS Spec updates

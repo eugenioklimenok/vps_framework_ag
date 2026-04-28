@@ -1,3 +1,18 @@
+# Approved Additive Integration Notice — HOST Slice 02 Docker / Compose
+
+This document preserves the recovered original HOST baseline content below and extends it under the project **no-regression by extension-only** rule.
+
+Approved change:
+- Docker Engine installation and Docker Compose v2 plugin installation are now part of **HOST Phase 1** as **Slice 02 — Docker / Docker Compose Runtime Baseline**.
+- Existing Slice 01 operator user and SSH access behavior remains valid and unchanged.
+- Any older statement in the recovered baseline saying Docker installation, Docker normalization, or Docker checks are deferred is now narrowed to mean **deferred from Slice 01 only**.
+- The canonical definition for Docker / Compose behavior is the Slice 02 extension section added in this document.
+- `audit-vps` remains read-only.
+- `init-vps` may mutate Docker runtime state only under the documented Slice 02 rules.
+- DEPLOY consumes Docker runtime; DEPLOY must not silently install or repair Docker once Slice 02 is canonical.
+
+---
+
 # HOST Baseline — Technical Design Document (TDD)
 
 ## 1. Purpose
@@ -509,3 +524,153 @@ Its architecture therefore requires:
 - slice-based growth of reconciliation logic without breaking contracts
 
 All HOST implementation must remain aligned with this design.
+
+---
+
+# Approved Technical Extension — HOST Slice 02 Docker / Docker Compose Runtime Baseline
+
+## 1. Technical Intent
+
+This extension adds a second controlled `init-vps` reconciliation slice.
+
+Slice 02 prepares Docker Engine and Docker Compose v2 as host-level runtime prerequisites for DEPLOY.
+
+The existing Slice 01 architecture remains unchanged.
+
+## 2. Execution Flow Update
+
+The extended `init-vps` flow is:
+
+1. CLI invocation
+2. explicit input validation
+3. preflight / audit gate evaluation
+4. abort if host classification is `BLOCKED`
+5. Slice 01 operator user reconciliation
+6. Slice 01 operator filesystem reconciliation
+7. Slice 01 post-action validation
+8. Slice 02 Docker / Docker Compose runtime reconciliation
+9. Slice 02 post-action validation
+10. final decision rendering
+11. exit code emission
+
+## 3. Recommended Module Boundaries
+
+Recommended new or extended modules:
+
+```text
+framework/modules/host/audit/checks/docker.py
+framework/modules/host/init/reconcile_docker.py
+framework/modules/host/init/validate_docker.py
+```
+
+### `audit/checks/docker.py`
+
+Responsibilities:
+
+- Docker CLI evidence collection
+- Docker daemon/service evidence collection
+- Docker Compose v2 evidence collection
+- legacy `docker-compose` diagnostic detection
+- operator Docker group membership evidence
+- operator Docker access evidence where required
+- conflict and ambiguity signal detection
+
+### `init/reconcile_docker.py`
+
+Responsibilities:
+
+- Docker installation planning
+- Docker official package source setup where required and supported
+- Docker Engine installation or compatible reuse
+- Docker Compose v2 plugin installation or compatible reuse
+- `docker.service` enable/start behavior
+- operator `docker` group membership reconciliation when required
+
+### `init/validate_docker.py`
+
+Responsibilities:
+
+- Docker binary validation
+- Docker daemon validation
+- Docker Compose v2 validation
+- operator Docker access validation when required for DEPLOY operator execution
+
+## 4. Docker Installation Policy
+
+For supported Ubuntu-compatible systems, the preferred installation policy is:
+
+- Docker Engine from the official Docker package source
+- Docker Compose v2 plugin exposed as `docker compose`
+
+Legacy standalone `docker-compose` may be detected for diagnostics, but it MUST NOT satisfy the Docker Compose v2 baseline unless a future contract explicitly allows compatibility fallback.
+
+## 5. Allowed Mutation in Slice 02
+
+Slice 02 may:
+
+- install Docker Engine when absent and safely supported
+- install Docker Compose v2 plugin when absent and safely supported
+- configure the documented Docker package source when required by the approved install method
+- enable `docker.service` when required and safe
+- start `docker.service` when required and safe
+- create or reuse the `docker` group according to platform behavior
+- add the configured operator user to the `docker` group when required for DEPLOY operator execution
+
+## 6. Forbidden Mutation in Slice 02
+
+Slice 02 MUST NOT:
+
+- remove unknown Docker installations blindly
+- overwrite custom Docker daemon configuration blindly
+- delete containers, images, volumes, or networks
+- create application Compose projects
+- start application workloads
+- mutate registry credentials
+- perform unrelated package repair
+- mutate SSH hardening state
+- mutate UFW state
+- silently change privilege policy outside the documented operator Docker access rule
+
+## 7. Validation Requirements
+
+Slice 02 post-action validation MUST confirm:
+
+- `docker --version` succeeds
+- `docker info` succeeds
+- `docker compose version` succeeds
+- `docker.service` is active or the daemon is otherwise reachable according to documented platform policy
+- operator Docker access succeeds when DEPLOY is expected to execute Docker as the operator user
+
+Adding the operator to the `docker` group may require a new login session before non-root Docker access is effective.
+
+The implementation MUST NOT claim operator Docker access is valid until the intended execution context is validated.
+
+## 8. Blocked States
+
+The implementation MUST classify the host as `BLOCKED` when Docker state is unsafe or ambiguous, including:
+
+- unsupported OS or architecture for the current Docker install policy
+- broken package manager state
+- conflicting Docker packages or repositories
+- Docker binary exists but cannot be identified safely
+- Docker daemon fails after documented reconciliation
+- Compose path is ambiguous or broken
+- Docker socket ownership or permission state cannot be trusted
+
+## 9. Test Expectations
+
+At minimum, tests SHOULD cover:
+
+- Docker absent → saneable classification and install plan
+- Docker ready → compatible classification and no reinstall
+- Docker Compose v2 missing → saneable classification and plugin install plan
+- legacy `docker-compose` only → not compatible with Compose v2 baseline
+- Docker daemon failed → blocked classification unless documented safe recovery exists
+- operator missing Docker group membership → saneable or validation failure according to execution phase
+- idempotent rerun after successful Docker baseline preparation
+
+## 10. Documentation Change Record
+
+This extension preserves the recovered HOST TDD.
+
+Prior statements that Docker normalization details were future/deferred are narrowed to mean Docker was deferred from Slice 01. Docker Engine and Docker Compose v2 are now governed by Slice 02.

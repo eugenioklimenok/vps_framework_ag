@@ -1,3 +1,18 @@
+# Approved Additive Integration Notice — HOST Slice 02 Docker / Compose
+
+This document preserves the recovered original HOST baseline content below and extends it under the project **no-regression by extension-only** rule.
+
+Approved change:
+- Docker Engine installation and Docker Compose v2 plugin installation are now part of **HOST Phase 1** as **Slice 02 — Docker / Docker Compose Runtime Baseline**.
+- Existing Slice 01 operator user and SSH access behavior remains valid and unchanged.
+- Any older statement in the recovered baseline saying Docker installation, Docker normalization, or Docker checks are deferred is now narrowed to mean **deferred from Slice 01 only**.
+- The canonical definition for Docker / Compose behavior is the Slice 02 extension section added in this document.
+- `audit-vps` remains read-only.
+- `init-vps` may mutate Docker runtime state only under the documented Slice 02 rules.
+- DEPLOY consumes Docker runtime; DEPLOY must not silently install or repair Docker once Slice 02 is canonical.
+
+---
+
 # HOST BASELINE CONTRACT
 
 ## 1. Purpose
@@ -432,3 +447,104 @@ The current HOST contract defines a:
 baseline for HOST execution.
 
 It is mandatory for the current stage and must remain aligned with the HOST FDD and HOST TDD.
+
+---
+
+# Approved Contract Extension — HOST Slice 02 Docker / Docker Compose Runtime Baseline
+
+## 1. Contract Status
+
+This section extends the current HOST executable contract.
+
+It does not remove or weaken Slice 01.
+
+## 2. Definition
+
+Slice 02 prepares and validates Docker Engine and Docker Compose v2 as HOST runtime prerequisites for DEPLOY.
+
+## 3. Preconditions
+
+Slice 02 may execute only when:
+
+- prior audit execution or equivalent internal gate logic has completed
+- host classification is not `BLOCKED`
+- Slice 01 prerequisites are satisfied or already compatible
+- OS and architecture are supported for the Docker install policy
+- Docker state is `CLEAN`, `COMPATIBLE`, or `SANEABLE`
+- required package manager operations are available where installation is needed
+
+## 4. MUST
+
+Within Slice 02, `init-vps` MUST:
+
+- install Docker Engine when absent and safely supported
+- install Docker Compose v2 plugin when absent and safely supported
+- reuse an existing compatible Docker runtime when already valid
+- enable and start `docker.service` when required and safe
+- reconcile operator Docker access when DEPLOY is expected to execute Docker as the operator user
+- validate Docker CLI availability
+- validate Docker daemon availability
+- validate Docker Compose v2 availability through `docker compose`
+- fail closed on ambiguous, conflicting, unsupported, or broken Docker state
+- preserve DEPLOY as the owner of application workload execution
+
+## 5. MUST NOT
+
+Within Slice 02, `init-vps` MUST NOT:
+
+- remove unknown Docker installations blindly
+- overwrite custom Docker daemon configuration blindly
+- delete containers, images, volumes, or networks
+- create application Compose projects
+- build or pull application images
+- start application containers
+- perform registry authentication
+- configure reverse proxy or TLS
+- perform application smoke testing
+- perform unrelated package repair
+- silently alter privilege model outside the documented operator Docker access rule
+
+## 6. Required Runtime Validation
+
+Slice 02 success requires runtime validation confirming:
+
+```bash
+docker --version
+docker info
+docker compose version
+```
+
+When systemd is part of the supported runtime model:
+
+```bash
+systemctl is-active docker
+```
+
+When DEPLOY is expected to run Docker as the operator user, validation MUST confirm operator Docker access in the intended execution context.
+
+## 7. Classification Contract
+
+Docker-related classification MUST follow:
+
+- Docker absent but safely installable → `SANEABLE`
+- Compose v2 absent but safely installable → `SANEABLE`
+- Docker service stopped but safely startable → `SANEABLE`
+- operator missing Docker group membership when required → `SANEABLE`
+- Docker ready, daemon reachable, Compose v2 available, operator access valid → `COMPATIBLE`
+- broken Docker daemon, conflicting Docker packages, ambiguous install source, unsupported OS/architecture, or untrusted socket permissions → `BLOCKED`
+
+## 8. DEPLOY Boundary Contract
+
+HOST owns Docker runtime preparation.
+
+DEPLOY owns workload deployment.
+
+DEPLOY MUST NOT silently install or repair Docker once this contract is active.
+
+If Docker runtime prerequisites are missing during DEPLOY, DEPLOY must fail clearly and point back to HOST.
+
+## 9. Documentation Change Record
+
+This extension preserves the recovered HOST Contract.
+
+Prior statements that Docker installation and Docker normalization were out of current scope are narrowed to mean out of Slice 01. Docker Engine and Docker Compose v2 are now part of the current executable HOST baseline through Slice 02.

@@ -1,3 +1,18 @@
+# Approved Additive Integration Notice — HOST Slice 02 Docker / Compose
+
+This document preserves the recovered original HOST baseline content below and extends it under the project **no-regression by extension-only** rule.
+
+Approved change:
+- Docker Engine installation and Docker Compose v2 plugin installation are now part of **HOST Phase 1** as **Slice 02 — Docker / Docker Compose Runtime Baseline**.
+- Existing Slice 01 operator user and SSH access behavior remains valid and unchanged.
+- Any older statement in the recovered baseline saying Docker installation, Docker normalization, or Docker checks are deferred is now narrowed to mean **deferred from Slice 01 only**.
+- The canonical definition for Docker / Compose behavior is the Slice 02 extension section added in this document.
+- `audit-vps` remains read-only.
+- `init-vps` may mutate Docker runtime state only under the documented Slice 02 rules.
+- DEPLOY consumes Docker runtime; DEPLOY must not silently install or repair Docker once Slice 02 is canonical.
+
+---
+
 # AUDIT VPS SPECIFICATION
 
 ## 1. Purpose
@@ -723,3 +738,260 @@ For that reason, `audit-vps` MUST be:
 - evidence-driven
 - contract-aligned
 - free of hardcoded operator assumptions
+
+---
+
+# Approved Audit Extension — Docker Runtime Baseline Check Family
+
+## 1. Extension Purpose
+
+This extension adds read-only Docker evidence collection required by HOST Slice 02.
+
+`audit-vps` remains strictly read-only.
+
+## 2. Read-only Constraint
+
+Docker checks MUST NOT:
+
+- install Docker
+- install Docker Compose
+- start Docker
+- stop Docker
+- enable Docker
+- modify package repositories
+- modify users or groups
+- modify socket permissions
+- create containers
+- pull images
+- write system state
+
+## 3. CHECK_DOCKER_01 — Docker CLI Availability
+
+### Purpose
+
+Detect whether the Docker CLI is available and executable.
+
+### Evidence command
+
+```bash
+docker --version
+```
+
+### PASS
+
+- command exists
+- return code is zero
+- output identifies Docker CLI
+
+### WARN
+
+- Docker CLI is missing on a supported host where installation is safe
+
+### FAIL
+
+- Docker CLI exists but execution fails in a way that suggests broken or ambiguous installation
+
+### Classification impact
+
+- `WARN` → `SANEABLE`
+- `FAIL` → `BLOCKED`
+
+## 4. CHECK_DOCKER_02 — Docker Daemon / Service State
+
+### Purpose
+
+Detect whether Docker daemon is active and reachable.
+
+### Evidence commands
+
+```bash
+systemctl is-active docker
+docker info
+```
+
+### PASS
+
+- `docker.service` is active or daemon reachability is otherwise confirmed by documented platform policy
+- `docker info` succeeds
+
+### WARN
+
+- Docker is installed but service is stopped/disabled and appears safely startable by `init-vps`
+
+### FAIL
+
+- Docker service is failed
+- daemon cannot be reached due to broken or ambiguous runtime state
+- Docker socket permissions are unsafe or cannot be trusted
+
+### Classification impact
+
+- `WARN` → `SANEABLE`
+- `FAIL` → `BLOCKED`
+
+## 5. CHECK_DOCKER_03 — Docker Compose v2 Availability
+
+### Purpose
+
+Detect whether Docker Compose v2 plugin is available through the canonical command.
+
+### Evidence command
+
+```bash
+docker compose version
+```
+
+### PASS
+
+- command succeeds
+- output identifies Docker Compose v2 or plugin-compatible Compose
+
+### WARN
+
+- Docker exists but Compose v2 plugin is missing on a supported host where installation is safe
+
+### FAIL
+
+- `docker compose` exists but fails in a way that suggests broken or ambiguous installation
+
+### Classification impact
+
+- `WARN` → `SANEABLE`
+- `FAIL` → `BLOCKED`
+
+## 6. CHECK_DOCKER_04 — Legacy Compose Diagnostic
+
+### Purpose
+
+Detect legacy standalone `docker-compose` only as diagnostic evidence.
+
+### Evidence command
+
+```bash
+docker-compose --version
+```
+
+Legacy `docker-compose` alone MUST NOT satisfy the Docker Compose v2 baseline.
+
+DEPLOY requires `docker compose` unless a future contract explicitly allows fallback.
+
+## 7. CHECK_DOCKER_05 — Operator Docker Group Membership
+
+### Purpose
+
+Detect whether the configured operator user is a member of the `docker` group when DEPLOY is expected to run Docker as that operator.
+
+### Evidence commands
+
+```bash
+id <operator_user>
+getent group docker
+```
+
+### PASS
+
+- operator user exists
+- `docker` group exists
+- operator user is a member of `docker`
+
+### WARN
+
+- operator exists but is not a member of `docker`
+- `docker` group is missing but can be safely created/reused by Docker package installation
+
+### FAIL
+
+- operator identity is ambiguous
+- `docker` group state is inconsistent or unsafe to trust
+
+### Classification impact
+
+- `WARN` → `SANEABLE`
+- `FAIL` → `BLOCKED`
+
+## 8. CHECK_DOCKER_06 — Operator Docker Access
+
+### Purpose
+
+Detect whether the intended operator execution context can use Docker.
+
+### Evidence command
+
+```bash
+sudo -u <operator_user> docker ps
+```
+
+Alternative equivalent evidence may be used if documented and deterministic.
+
+### PASS
+
+- command succeeds for intended operator context
+
+### WARN
+
+- operator group membership may require a new login session before access becomes effective
+
+### FAIL
+
+- permission error cannot be explained by known session-refresh behavior
+- socket permission state is inconsistent
+- failure indicates broken Docker runtime
+
+### Classification impact
+
+- `WARN` → `SANEABLE`
+- `FAIL` → `BLOCKED`
+
+## 9. Docker Classification Examples
+
+### Docker missing
+
+- `docker --version` command not found
+- host OS/architecture supported
+- package manager appears usable
+
+Classification: `SANEABLE`
+
+### Docker installed, Compose v1 only
+
+- `docker --version` succeeds
+- `docker-compose --version` succeeds
+- `docker compose version` fails
+
+Classification: `SANEABLE` if Compose v2 plugin can be safely installed; otherwise `BLOCKED`.
+
+### Docker service failed
+
+- Docker CLI exists
+- `systemctl is-active docker` returns `failed`
+- `docker info` fails
+
+Classification: `BLOCKED` unless a safe documented recovery path exists.
+
+### Docker fully ready
+
+- Docker CLI OK
+- Docker daemon reachable
+- Compose v2 OK
+- operator access valid when required
+
+Classification: `COMPATIBLE`
+
+## 10. Output Grouping Update
+
+Human-readable audit output SHOULD include a `DOCKER` group.
+
+Recommended Docker check ids:
+
+- `CHECK_DOCKER_01`
+- `CHECK_DOCKER_02`
+- `CHECK_DOCKER_03`
+- `CHECK_DOCKER_04`
+- `CHECK_DOCKER_05`
+- `CHECK_DOCKER_06`
+
+## 11. Documentation Change Record
+
+This extension preserves the recovered `AUDIT_VPS_SPEC.md`.
+
+Prior statements that Docker checks were deferred are narrowed to mean Docker checks were deferred before Slice 02. Docker evidence collection is now in scope, but Docker mutation remains forbidden for `audit-vps`.
