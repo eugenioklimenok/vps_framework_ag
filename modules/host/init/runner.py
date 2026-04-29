@@ -25,6 +25,12 @@ from modules.host.init.reconcile_filesystem import (
     reconcile_ssh_directory,
 )
 from modules.host.init.reconcile_user import reconcile_operator_user
+from modules.host.init.reconcile_docker import (
+    reconcile_docker_engine,
+    reconcile_docker_compose,
+    enable_start_docker,
+)
+from modules.host.init.validate_docker import validate_docker_slice
 from modules.host.init.validate import ValidationReport, validate_init_slice
 
 logger = logging.getLogger(__name__)
@@ -180,7 +186,66 @@ def run_init(operator_user: str, public_key_input: str) -> InitResult:
             abort_reason=f"Post-action validation failed: {reasons}",
         )
 
-    # === Step 7: Success ===
+    # === Step 7: Reconcile Docker / Compose Runtime (Slice 02) ===
+    logger.info("Reconciling Docker / Compose Runtime (Slice 02)...")
+    
+    docker_engine_action = reconcile_docker_engine()
+    reconcile_results.append(ReconcileResult(
+        step_id="RECONCILE_DOCKER_ENGINE",
+        action=docker_engine_action,
+        message="Docker engine reconciliation",
+        evidence=docker_engine_action.value,
+        success=docker_engine_action != ReconcileAction.FAILED
+    ))
+    if docker_engine_action == ReconcileAction.FAILED:
+        return InitResult(
+            audit_report=audit_report, reconcile_results=reconcile_results,
+            validation_report=validation_report,
+            aborted=True,
+            abort_reason="Docker Engine reconciliation failed.",
+        )
+
+    docker_compose_action = reconcile_docker_compose()
+    reconcile_results.append(ReconcileResult(
+        step_id="RECONCILE_DOCKER_COMPOSE",
+        action=docker_compose_action,
+        message="Docker Compose plugin reconciliation",
+        evidence=docker_compose_action.value,
+        success=docker_compose_action != ReconcileAction.FAILED
+    ))
+    if docker_compose_action == ReconcileAction.FAILED:
+        return InitResult(
+            audit_report=audit_report, reconcile_results=reconcile_results,
+            validation_report=validation_report,
+            aborted=True,
+            abort_reason="Docker Compose plugin reconciliation failed.",
+        )
+
+    docker_service_action = enable_start_docker()
+    reconcile_results.append(ReconcileResult(
+        step_id="RECONCILE_DOCKER_SERVICE",
+        action=docker_service_action,
+        message="Docker service enablement",
+        evidence=docker_service_action.value,
+        success=docker_service_action != ReconcileAction.FAILED
+    ))
+    if docker_service_action == ReconcileAction.FAILED:
+        return InitResult(
+            audit_report=audit_report, reconcile_results=reconcile_results,
+            validation_report=validation_report,
+            aborted=True,
+            abort_reason="Docker service enablement failed.",
+        )
+
+    # === Step 8: Validate Docker Slice 02 ===
+    if not validate_docker_slice():
+        return InitResult(
+            audit_report=audit_report, reconcile_results=reconcile_results,
+            validation_report=validation_report,
+            abort_reason="Post-action Docker runtime validation failed.",
+        )
+
+    # === Step 9: Success ===
     logger.info("init-vps completed successfully.")
     return InitResult(
         success=True, audit_report=audit_report,

@@ -39,6 +39,13 @@ from modules.host.audit.checks_user import (
     run_check_user_exists,
     run_check_user_home_mapping,
 )
+from modules.host.audit.checks_docker import (
+    run_check_docker_cli,
+    run_check_docker_compose,
+    run_check_docker_conflicts,
+    run_check_docker_daemon,
+    run_check_docker_runtime,
+)
 from modules.host.audit.classifier import reduce_classification
 
 logger = logging.getLogger(__name__)
@@ -104,6 +111,14 @@ def run_audit(operator_user: str) -> AuditReport:
     # === SYSTEM SAFETY Checks (§8.5) ===
     logger.debug("Running SYSTEM checks...")
     results.append(run_check_root_free_space())
+
+    # === DOCKER Checks (§12 - Slice 02) ===
+    logger.debug("Running DOCKER checks...")
+    results.append(run_check_docker_cli())
+    results.append(run_check_docker_daemon())
+    results.append(run_check_docker_runtime())
+    results.append(run_check_docker_compose())
+    results.append(run_check_docker_conflicts())
 
     # === Classification Reduction ===
     classification = reduce_classification(results)
