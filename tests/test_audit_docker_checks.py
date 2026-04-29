@@ -82,3 +82,12 @@ def test_check_docker_conflicts_found(mock_run):
     result = run_check_docker_conflicts()
     assert result.status == CheckStatus.FAIL
     assert result.classification_impact == ClassificationImpact.BLOCKED
+
+
+@patch("modules.host.audit.checks_docker.run_command")
+def test_check_docker_conflicts_found_docker_io(mock_run):
+    """Test docker conflict check when docker.io package exists."""
+    mock_run.return_value = CommandResult(stdout="ii  docker.io  24.0.5  Ubuntu native docker\n", stderr="", returncode=0, timed_out=False, error="")
+    result = run_check_docker_conflicts()
+    assert result.status == CheckStatus.FAIL
+    assert result.classification_impact == ClassificationImpact.BLOCKED

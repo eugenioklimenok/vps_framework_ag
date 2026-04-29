@@ -148,7 +148,13 @@ def run_check_docker_conflicts() -> CheckResult:
     cmd = ["dpkg", "-l"]
     result = run_command(cmd)
 
-    conflicting_packages = ["docker-doc", "docker-compose", "podman-docker"]
+    conflicting_packages = [
+        "docker.io",
+        "docker-doc",
+        "docker-compose",
+        "docker-compose-v2",
+        "podman-docker"
+    ]
     found_conflicts = []
 
     if result.returncode == 0:
