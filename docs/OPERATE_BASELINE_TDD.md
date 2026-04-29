@@ -1,5 +1,14 @@
 # OPERATE Baseline — Technical Design Document (TDD)
 
+
+> **Canonical extension note — OPERATE Slice 01 Backup/Audit Precision**
+>
+> This document has been extended additively to incorporate `OPERATE_SLICE_01_BACKUP_AUDIT_PRECISION_ADDENDUM.md`.
+> No previously approved baseline content is removed, compressed, weakened, or replaced by this merge.
+> The extension clarifies executable precision for `backup-project` output directory handling, artifact validation, source non-mutation, and `audit-project` non-mutating runtime boundaries.
+> Default documentation mode remains **EXTEND, never COMPRESS**.
+
+
 ## 1. Purpose
 
 This document defines the **technical architecture** of the OPERATE module.
@@ -589,3 +598,50 @@ Its architecture therefore requires:
 - baseline-based growth of operate logic without breaking contracts
 
 All OPERATE implementation must remain aligned with this design.
+
+---
+
+## Appendix — OPERATE Slice 01 Backup/Audit Precision
+
+This appendix integrates `OPERATE_SLICE_01_BACKUP_AUDIT_PRECISION_ADDENDUM.md` into this canonical OPERATE document as an additive extension. It does not remove, replace, compress, or weaken any previously approved baseline content.
+
+### Canonical Precision Rules
+
+The current OPERATE Slice 01 baseline is extended with these executable documentation rules:
+
+1. `backup-project --path` and `backup-project --output-dir` MUST be explicit inputs. Neither path may be inferred from current working directory, environment variables, hidden config, shell history, or conventional paths.
+2. `--path` and `--output-dir` MUST be resolved to absolute canonical paths before backup planning begins.
+3. For OPERATE Slice 01, the resolved backup output directory MUST NOT be equal to, inside, or symlink-resolved inside the resolved project root. Unsafe or ambiguous placement MUST block.
+4. `backup-project` MAY create a missing output directory only when the parent exists, is writable, is safe, the resulting directory is outside the project root, and the created directory is revalidated before archive creation.
+5. `backup-project` MUST construct a structured backup plan before archive creation. Archive creation and artifact validation MUST execute against that plan.
+6. `backup-project` MUST NOT report `CREATED` merely because archive creation was attempted. It may report `CREATED` only after artifact validation succeeds.
+7. Artifact validation MUST confirm existence, regular-file status, non-empty size, placement under resolved output directory, path match with backup plan, archive readability, expected planned content, no output directory self-inclusion, no artifact self-inclusion, and checksum validity where checksum generation is implemented.
+8. `backup-project` MUST NOT mutate source project files. Allowed writes are limited to the archive artifact, checksum sidecar where implemented, and safe output directory creation.
+9. `audit-project` remains non-mutating. It MUST NOT deploy, redeploy, start services, restart services, run `docker compose up`, run migrations, repair Docker, create missing project files, mutate runtime state, or mutate project files.
+10. `audit-project` MUST preserve the distinction between untrustworthy evidence and failed health: insufficient or untrustworthy evidence classifies as `BLOCKED`; trustworthy failed health classifies as `DEGRADED`; all required checks passing may classify as `HEALTHY`.
+11. OPERATE MUST NOT absorb HOST, PROJECT, or DEPLOY responsibilities. HOST owns host preparation and Docker runtime availability. PROJECT owns scaffold and identity creation. DEPLOY owns deployment-time mutation and application lifecycle.
+
+### Output Directory Classification
+
+The backup implementation MUST classify output directory state as one of:
+
+- `EXISTS_WRITABLE`
+- `MISSING_CREATABLE`
+- `INVALID`
+- `UNSAFE`
+- `AMBIGUOUS`
+
+Only `EXISTS_WRITABLE` and safely revalidated `MISSING_CREATABLE` may proceed. `INVALID`, `UNSAFE`, and `AMBIGUOUS` MUST block.
+
+### Source Scope Rule
+
+The backup source scope remains bounded. The command may include only the project root and one explicit env file when env-file inclusion is explicitly requested and valid under canonical policy. It MUST NOT include arbitrary external paths, implicit database paths, Docker volumes, hidden secret locations, host-level config files, output directory content, generated artifacts, or checksum sidecars from the current run.
+
+### Required Tests
+
+Implementation work for this extension SHOULD include tests proving missing inputs block, unsafe output directory placement blocks, symlink ambiguity blocks, safe output directory creation is revalidated, artifacts are validated before success, checksum mismatch fails where implemented, source project files are not mutated, audit remains non-mutating, and audit distinguishes `BLOCKED` from `DEGRADED`.
+
+### Canonical Addendum Reference
+
+The full design record for this extension is retained in `OPERATE_SLICE_01_BACKUP_AUDIT_PRECISION_ADDENDUM.md`.
+
