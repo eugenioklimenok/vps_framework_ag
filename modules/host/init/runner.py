@@ -31,7 +31,7 @@ from modules.host.init.reconcile_docker import (
     enable_start_docker,
     reconcile_docker_operator_access,
 )
-from modules.host.init.validate_docker import validate_docker_slice
+from modules.host.init.validate_docker import validate_docker_slice_report
 from modules.host.init.validate import ValidationReport, validate_init_slice
 
 logger = logging.getLogger(__name__)
@@ -231,10 +231,16 @@ def run_init(operator_user: str, public_key_input: str) -> InitResult:
         )
 
     # === Step 8: Validate Docker Slice 02 ===
-    if not validate_docker_slice(operator_user):
+    docker_validation_report = validate_docker_slice_report(operator_user)
+    combined_validation_report = ValidationReport(
+        results=[*validation_report.results, *docker_validation_report.results],
+        all_passed=validation_report.all_passed and docker_validation_report.all_passed,
+    )
+
+    if not docker_validation_report.all_passed:
         return InitResult(
             audit_report=audit_report, reconcile_results=reconcile_results,
-            validation_report=validation_report,
+            validation_report=combined_validation_report,
             aborted=True,
             abort_reason="Post-action Docker runtime validation failed.",
         )
@@ -244,5 +250,5 @@ def run_init(operator_user: str, public_key_input: str) -> InitResult:
     return InitResult(
         success=True, audit_report=audit_report,
         reconcile_results=reconcile_results,
-        validation_report=validation_report,
+        validation_report=combined_validation_report,
     )
