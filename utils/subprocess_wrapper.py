@@ -84,7 +84,7 @@ def run_command(
         )
 
     except FileNotFoundError:
-        logger.error("Command binary not found: %s", cmd[0] if cmd else "<empty>")
+        logger.debug("Command binary not found: %s", cmd[0] if cmd else "<empty>")
         return CommandResult(
             stdout="",
             stderr="",
