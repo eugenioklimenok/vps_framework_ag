@@ -9,6 +9,7 @@ import logging
 from models.enums import ReconcileAction
 from models.reconcile_result import ReconcileResult
 from modules.host.audit.checks_docker import (
+    _parse_group_members,
     run_check_docker_cli,
     run_check_docker_compose,
     run_check_docker_daemon,
@@ -255,20 +256,20 @@ def reconcile_docker_operator_access(operator_user: str) -> ReconcileResult:
             message="Docker group does not exist.", evidence="getent group docker failed", success=False
         )
 
-    # Check if user is in docker group
-    res_id = run_command(["id", "-nG", operator_user])
+    members = _parse_group_members(res_group.stdout)
+    if operator_user in members:
+        return ReconcileResult(
+            step_id="RECONCILE_DOCKER_OPERATOR_ACCESS", action=ReconcileAction.REUSED,
+            message=f"Operator user '{operator_user}' already has docker group access",
+            evidence="user already in docker group", success=True
+        )
+
+    # Verify the operator exists before attempting the privileged mutation.
+    res_id = run_command(["id", operator_user])
     if res_id.returncode != 0:
         return ReconcileResult(
             step_id="RECONCILE_DOCKER_OPERATOR_ACCESS", action=ReconcileAction.FAILED,
-            message=f"Failed to get groups for user {operator_user}.", evidence="id -nG failed", success=False
-        )
-
-    groups = res_id.stdout.split()
-    if "docker" in groups:
-        return ReconcileResult(
-            step_id="RECONCILE_DOCKER_OPERATOR_ACCESS", action=ReconcileAction.SKIPPED,
-            message=f"Operator user '{operator_user}' already has docker group access",
-            evidence="user already in docker group", success=True
+            message=f"Failed to inspect operator user '{operator_user}'.", evidence="id failed", success=False
         )
 
     logger.debug(f"Adding user {operator_user} to docker group...")
@@ -285,4 +286,3 @@ def reconcile_docker_operator_access(operator_user: str) -> ReconcileResult:
         message=f"Operator user '{operator_user}' added to docker group",
         evidence="usermod succeeded", success=True
     )
-

@@ -8,6 +8,7 @@ from modules.host.init.reconcile_docker import (
     reconcile_docker_engine,
     reconcile_docker_compose,
     enable_start_docker,
+    reconcile_docker_operator_access,
 )
 
 
@@ -136,6 +137,55 @@ def test_enable_start_docker_repair(mock_daemon, mock_run):
     assert enable_start_docker().action == ReconcileAction.REPAIRED
     mock_run.assert_called_once_with(["systemctl", "enable", "--now", "docker"], timeout=60)
 
+
+@patch("utils.subprocess_wrapper.run_command")
+def test_reconcile_docker_operator_access_repairs_missing_group_member(mock_run):
+    """Operator is added when docker group exists but does not list the operator."""
+    mock_run.side_effect = [
+        CommandResult(stdout="docker:x:988:\n", stderr="", returncode=0, timed_out=False, error=""),
+        CommandResult(stdout="uid=1001(devops) gid=1001(devops) groups=1001(devops)\n", stderr="", returncode=0, timed_out=False, error=""),
+        CommandResult(stdout="", stderr="", returncode=0, timed_out=False, error=""),
+    ]
+
+    result = reconcile_docker_operator_access("devops")
+
+    assert result.success is True
+    assert result.action == ReconcileAction.REPAIRED
+    assert result.step_id == "RECONCILE_DOCKER_OPERATOR_ACCESS"
+    assert "added to docker group" in result.message
+    assert mock_run.call_args_list[0][0][0] == ["getent", "group", "docker"]
+    assert mock_run.call_args_list[1][0][0] == ["id", "devops"]
+    assert mock_run.call_args_list[2][0][0] == ["usermod", "-aG", "docker", "devops"]
+
+
+@patch("utils.subprocess_wrapper.run_command")
+def test_reconcile_docker_operator_access_reuses_existing_group_member(mock_run):
+    """Already-member path is idempotent and does not call usermod."""
+    mock_run.return_value = CommandResult(
+        stdout="docker:x:988:devops,other\n", stderr="", returncode=0, timed_out=False, error=""
+    )
+
+    result = reconcile_docker_operator_access("devops")
+
+    assert result.success is True
+    assert result.action == ReconcileAction.REUSED
+    assert "already has docker group access" in result.message
+    mock_run.assert_called_once_with(["getent", "group", "docker"])
+
+
+@patch("utils.subprocess_wrapper.run_command")
+def test_reconcile_docker_operator_access_fails_if_docker_group_missing(mock_run):
+    """Reconciliation fails closed when the docker group is absent."""
+    mock_run.return_value = CommandResult(
+        stdout="", stderr="", returncode=2, timed_out=False, error=""
+    )
+
+    result = reconcile_docker_operator_access("devops")
+
+    assert result.success is False
+    assert result.action == ReconcileAction.FAILED
+    mock_run.assert_called_once_with(["getent", "group", "docker"])
+
 @patch("modules.host.init.reconcile_docker.run_command")
 @patch("modules.host.init.reconcile_docker.run_check_docker_cli")
 @patch("modules.host.init.reconcile_docker.validate_docker_slice")
@@ -186,4 +236,3 @@ def test_reconcile_docker_engine_timeout_recovery_failed(mock_file, mock_validat
     assert res.success is False
     assert "timeout and validation failure" in res.message
     mock_validate.assert_called_once()
-

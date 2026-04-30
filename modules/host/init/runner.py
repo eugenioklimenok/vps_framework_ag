@@ -235,6 +235,7 @@ def run_init(operator_user: str, public_key_input: str) -> InitResult:
         return InitResult(
             audit_report=audit_report, reconcile_results=reconcile_results,
             validation_report=validation_report,
+            aborted=True,
             abort_reason="Post-action Docker runtime validation failed.",
         )
 

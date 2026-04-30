@@ -1,0 +1,4 @@
+# Framework ignores
+.env
+__pycache__/
+*.pyc

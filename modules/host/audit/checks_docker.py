@@ -9,6 +9,14 @@ from models.enums import CheckStatus, ClassificationImpact
 from utils.subprocess_wrapper import run_command
 
 
+def _parse_group_members(group_entry: str) -> set[str]:
+    """Parse members from a getent group entry."""
+    parts = group_entry.strip().split(":")
+    if len(parts) < 4 or not parts[3].strip():
+        return set()
+    return {member.strip() for member in parts[3].split(",") if member.strip()}
+
+
 def run_check_docker_cli() -> CheckResult:
     """CHECK_DOCKER_01: Docker CLI availability."""
     cmd = ["docker", "--version"]
@@ -197,6 +205,52 @@ def run_check_docker_conflicts() -> CheckResult:
 
 def run_check_docker_operator_access(operator_user: str) -> CheckResult:
     """CHECK_DOCKER_06: Docker operator access."""
+    id_cmd = ["id", operator_user]
+    id_result = run_command(id_cmd)
+    if id_result.returncode != 0:
+        return CheckResult(
+            check_id="CHECK_DOCKER_06",
+            title="Docker Operator Access",
+            category="DOCKER",
+            description="Verifies if the operator user can interact with the Docker daemon.",
+            evidence_command=" ".join(id_cmd),
+            expected_behavior="operator user exists before Docker access validation.",
+            status=CheckStatus.WARN,
+            evidence=id_result.error or id_result.stderr.strip() or "Command failed.",
+            message="Operator user does not exist or cannot be inspected.",
+            classification_impact=ClassificationImpact.SANEABLE,
+        )
+
+    group_cmd = ["getent", "group", "docker"]
+    group_result = run_command(group_cmd)
+    if group_result.returncode != 0:
+        return CheckResult(
+            check_id="CHECK_DOCKER_06",
+            title="Docker Operator Access",
+            category="DOCKER",
+            description="Verifies if the operator user can interact with the Docker daemon.",
+            evidence_command=" ".join(group_cmd),
+            expected_behavior="docker group exists and includes the operator user.",
+            status=CheckStatus.WARN,
+            evidence=group_result.error or group_result.stderr.strip() or "Command failed.",
+            message="Docker group does not exist or cannot be inspected.",
+            classification_impact=ClassificationImpact.SANEABLE,
+        )
+
+    if operator_user not in _parse_group_members(group_result.stdout):
+        return CheckResult(
+            check_id="CHECK_DOCKER_06",
+            title="Docker Operator Access",
+            category="DOCKER",
+            description="Verifies if the operator user can interact with the Docker daemon.",
+            evidence_command=" ".join(group_cmd),
+            expected_behavior="docker group exists and includes the operator user.",
+            status=CheckStatus.WARN,
+            evidence=group_result.stdout.strip() or "docker group has no listed members.",
+            message="Operator user is not listed as a docker group member.",
+            classification_impact=ClassificationImpact.SANEABLE,
+        )
+
     cmd = ["runuser", "-l", operator_user, "-c", "docker ps"]
     result = run_command(cmd)
 
@@ -226,4 +280,3 @@ def run_check_docker_operator_access(operator_user: str) -> CheckResult:
         message="Operator user cannot interact with the Docker daemon.",
         classification_impact=ClassificationImpact.SANEABLE,
     )
-
