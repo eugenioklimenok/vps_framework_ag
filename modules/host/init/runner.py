@@ -29,6 +29,7 @@ from modules.host.init.reconcile_docker import (
     reconcile_docker_engine,
     reconcile_docker_compose,
     enable_start_docker,
+    reconcile_docker_operator_access,
 )
 from modules.host.init.validate_docker import validate_docker_slice
 from modules.host.init.validate import ValidationReport, validate_init_slice
@@ -219,8 +220,18 @@ def run_init(operator_user: str, public_key_input: str) -> InitResult:
             abort_reason=docker_service_res.message,
         )
 
+    operator_docker_res = reconcile_docker_operator_access(operator_user)
+    reconcile_results.append(operator_docker_res)
+    if not operator_docker_res.success:
+        return InitResult(
+            audit_report=audit_report, reconcile_results=reconcile_results,
+            validation_report=validation_report,
+            aborted=True,
+            abort_reason=operator_docker_res.message,
+        )
+
     # === Step 8: Validate Docker Slice 02 ===
-    if not validate_docker_slice():
+    if not validate_docker_slice(operator_user):
         return InitResult(
             audit_report=audit_report, reconcile_results=reconcile_results,
             validation_report=validation_report,

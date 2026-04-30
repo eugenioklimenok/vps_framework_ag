@@ -241,3 +241,48 @@ def enable_start_docker() -> ReconcileResult:
         message="Docker service is active",
         evidence="systemctl succeeded", success=True
     )
+
+
+def reconcile_docker_operator_access(operator_user: str) -> ReconcileResult:
+    """Ensure the operator user is in the docker group."""
+    from utils.subprocess_wrapper import run_command
+    
+    # Check if docker group exists
+    res_group = run_command(["getent", "group", "docker"])
+    if res_group.returncode != 0:
+        return ReconcileResult(
+            step_id="RECONCILE_DOCKER_OPERATOR_ACCESS", action=ReconcileAction.FAILED,
+            message="Docker group does not exist.", evidence="getent group docker failed", success=False
+        )
+
+    # Check if user is in docker group
+    res_id = run_command(["id", "-nG", operator_user])
+    if res_id.returncode != 0:
+        return ReconcileResult(
+            step_id="RECONCILE_DOCKER_OPERATOR_ACCESS", action=ReconcileAction.FAILED,
+            message=f"Failed to get groups for user {operator_user}.", evidence="id -nG failed", success=False
+        )
+
+    groups = res_id.stdout.split()
+    if "docker" in groups:
+        return ReconcileResult(
+            step_id="RECONCILE_DOCKER_OPERATOR_ACCESS", action=ReconcileAction.SKIPPED,
+            message=f"Operator user '{operator_user}' already has docker group access",
+            evidence="user already in docker group", success=True
+        )
+
+    logger.debug(f"Adding user {operator_user} to docker group...")
+    res_usermod = run_command(["usermod", "-aG", "docker", operator_user])
+    
+    if res_usermod.returncode != 0:
+        return ReconcileResult(
+            step_id="RECONCILE_DOCKER_OPERATOR_ACCESS", action=ReconcileAction.FAILED,
+            message=f"Failed to add {operator_user} to docker group.", evidence="usermod failed", success=False
+        )
+
+    return ReconcileResult(
+        step_id="RECONCILE_DOCKER_OPERATOR_ACCESS", action=ReconcileAction.REPAIRED,
+        message=f"Operator user '{operator_user}' added to docker group",
+        evidence="usermod succeeded", success=True
+    )
+

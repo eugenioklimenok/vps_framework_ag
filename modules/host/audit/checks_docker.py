@@ -193,3 +193,37 @@ def run_check_docker_conflicts() -> CheckResult:
         message="Found conflicting legacy Docker packages.",
         classification_impact=ClassificationImpact.BLOCKED,
     )
+
+
+def run_check_docker_operator_access(operator_user: str) -> CheckResult:
+    """CHECK_DOCKER_06: Docker operator access."""
+    cmd = ["runuser", "-l", operator_user, "-c", "docker ps"]
+    result = run_command(cmd)
+
+    if result.returncode == 0:
+        return CheckResult(
+            check_id="CHECK_DOCKER_06",
+            title="Docker Operator Access",
+            category="DOCKER",
+            description="Verifies if the operator user can interact with the Docker daemon.",
+            evidence_command=" ".join(cmd),
+            expected_behavior="runuser with docker ps returns successfully.",
+            status=CheckStatus.OK,
+            evidence="Docker ps successful",
+            message="Operator user has Docker access.",
+            classification_impact=ClassificationImpact.NONE,
+        )
+
+    return CheckResult(
+        check_id="CHECK_DOCKER_06",
+        title="Docker Operator Access",
+        category="DOCKER",
+        description="Verifies if the operator user can interact with the Docker daemon.",
+        evidence_command=" ".join(cmd),
+        expected_behavior="runuser with docker ps returns successfully.",
+        status=CheckStatus.WARN,
+        evidence=result.error or result.stderr.strip() or "Command failed.",
+        message="Operator user cannot interact with the Docker daemon.",
+        classification_impact=ClassificationImpact.SANEABLE,
+    )
+
