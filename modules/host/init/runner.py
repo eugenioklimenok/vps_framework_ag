@@ -189,52 +189,34 @@ def run_init(operator_user: str, public_key_input: str) -> InitResult:
     # === Step 7: Reconcile Docker / Compose Runtime (Slice 02) ===
     logger.info("Reconciling Docker / Compose Runtime (Slice 02)...")
     
-    docker_engine_action = reconcile_docker_engine()
-    reconcile_results.append(ReconcileResult(
-        step_id="RECONCILE_DOCKER_ENGINE",
-        action=docker_engine_action,
-        message="Docker engine reconciliation",
-        evidence=docker_engine_action.value,
-        success=docker_engine_action != ReconcileAction.FAILED
-    ))
-    if docker_engine_action == ReconcileAction.FAILED:
+    docker_engine_res = reconcile_docker_engine()
+    reconcile_results.append(docker_engine_res)
+    if not docker_engine_res.success:
         return InitResult(
             audit_report=audit_report, reconcile_results=reconcile_results,
             validation_report=validation_report,
             aborted=True,
-            abort_reason="Docker Engine reconciliation failed.",
+            abort_reason=docker_engine_res.message,
         )
 
-    docker_compose_action = reconcile_docker_compose()
-    reconcile_results.append(ReconcileResult(
-        step_id="RECONCILE_DOCKER_COMPOSE",
-        action=docker_compose_action,
-        message="Docker Compose plugin reconciliation",
-        evidence=docker_compose_action.value,
-        success=docker_compose_action != ReconcileAction.FAILED
-    ))
-    if docker_compose_action == ReconcileAction.FAILED:
+    docker_compose_res = reconcile_docker_compose()
+    reconcile_results.append(docker_compose_res)
+    if not docker_compose_res.success:
         return InitResult(
             audit_report=audit_report, reconcile_results=reconcile_results,
             validation_report=validation_report,
             aborted=True,
-            abort_reason="Docker Compose plugin reconciliation failed.",
+            abort_reason=docker_compose_res.message,
         )
 
-    docker_service_action = enable_start_docker()
-    reconcile_results.append(ReconcileResult(
-        step_id="RECONCILE_DOCKER_SERVICE",
-        action=docker_service_action,
-        message="Docker service enablement",
-        evidence=docker_service_action.value,
-        success=docker_service_action != ReconcileAction.FAILED
-    ))
-    if docker_service_action == ReconcileAction.FAILED:
+    docker_service_res = enable_start_docker()
+    reconcile_results.append(docker_service_res)
+    if not docker_service_res.success:
         return InitResult(
             audit_report=audit_report, reconcile_results=reconcile_results,
             validation_report=validation_report,
             aborted=True,
-            abort_reason="Docker service enablement failed.",
+            abort_reason=docker_service_res.message,
         )
 
     # === Step 8: Validate Docker Slice 02 ===

@@ -32,7 +32,7 @@ def test_reconcile_docker_engine_skip(mock_cli, mock_run):
     """Test engine reconciliation skipped if already installed."""
     mock_cli.return_value = _mock_result(CheckStatus.OK)
     
-    assert reconcile_docker_engine() == ReconcileAction.SKIPPED
+    assert reconcile_docker_engine().action == ReconcileAction.SKIPPED
     mock_run.assert_not_called()
 
 
@@ -44,7 +44,7 @@ def test_reconcile_docker_engine_install_official_repo(mock_file, mock_cli, mock
     mock_cli.return_value = _mock_result(CheckStatus.WARN)
     mock_run.return_value = CommandResult(stdout="amd64\n", stderr="", returncode=0, timed_out=False, error="")
     
-    assert reconcile_docker_engine() == ReconcileAction.CREATED
+    assert reconcile_docker_engine().action == ReconcileAction.CREATED
     
     # Verify the commands run in the correct order for the official setup
     calls = mock_run.call_args_list
@@ -63,6 +63,7 @@ def test_reconcile_docker_engine_install_official_repo(mock_file, mock_cli, mock
         "docker-buildx-plugin", "docker-compose-plugin"
     ]
     assert calls[7][0][0] == expected_packages
+    assert calls[7][1].get("timeout") == 300
     
     # Ensure sources.list was written
     mock_file.assert_any_call("/etc/apt/sources.list.d/docker.list", "w")
@@ -75,7 +76,7 @@ def test_reconcile_docker_engine_unsupported_os(mock_file, mock_cli, mock_run):
     """Test engine reconciliation fails before system mutation if OS is unsupported."""
     mock_cli.return_value = _mock_result(CheckStatus.WARN)
     
-    assert reconcile_docker_engine() == ReconcileAction.FAILED
+    assert reconcile_docker_engine().action == ReconcileAction.FAILED
     mock_run.assert_not_called()
     assert mock_file.call_count == 1
     mock_file.assert_called_once_with("/etc/os-release", "r")
@@ -88,7 +89,7 @@ def test_reconcile_docker_engine_missing_codename(mock_file, mock_cli, mock_run)
     """Test engine reconciliation fails before system mutation if codename is missing."""
     mock_cli.return_value = _mock_result(CheckStatus.WARN)
     
-    assert reconcile_docker_engine() == ReconcileAction.FAILED
+    assert reconcile_docker_engine().action == ReconcileAction.FAILED
     mock_run.assert_not_called()
     assert mock_file.call_count == 1
     mock_file.assert_called_once_with("/etc/os-release", "r")
@@ -100,7 +101,7 @@ def test_reconcile_docker_compose_skip(mock_compose, mock_run):
     """Test compose reconciliation skipped if already installed."""
     mock_compose.return_value = _mock_result(CheckStatus.OK)
     
-    assert reconcile_docker_compose() == ReconcileAction.SKIPPED
+    assert reconcile_docker_compose().action == ReconcileAction.SKIPPED
     mock_run.assert_not_called()
 
 
@@ -111,8 +112,8 @@ def test_reconcile_docker_compose_install(mock_compose, mock_run):
     mock_compose.return_value = _mock_result(CheckStatus.WARN)
     mock_run.return_value = CommandResult(stdout="", stderr="", returncode=0, timed_out=False, error="")
     
-    assert reconcile_docker_compose() == ReconcileAction.CREATED
-    mock_run.assert_called_once_with(["apt-get", "install", "-y", "docker-compose-plugin"])
+    assert reconcile_docker_compose().action == ReconcileAction.CREATED
+    mock_run.assert_called_once_with(["apt-get", "install", "-y", "docker-compose-plugin"], timeout=300)
 
 
 @patch("modules.host.init.reconcile_docker.run_command")
@@ -121,7 +122,7 @@ def test_enable_start_docker_skip(mock_daemon, mock_run):
     """Test daemon start skipped if already active."""
     mock_daemon.return_value = _mock_result(CheckStatus.OK)
     
-    assert enable_start_docker() == ReconcileAction.SKIPPED
+    assert enable_start_docker().action == ReconcileAction.SKIPPED
     mock_run.assert_not_called()
 
 
@@ -132,5 +133,57 @@ def test_enable_start_docker_repair(mock_daemon, mock_run):
     mock_daemon.return_value = _mock_result(CheckStatus.WARN)
     mock_run.return_value = CommandResult(stdout="", stderr="", returncode=0, timed_out=False, error="")
     
-    assert enable_start_docker() == ReconcileAction.REPAIRED
-    mock_run.assert_called_once()
+    assert enable_start_docker().action == ReconcileAction.REPAIRED
+    mock_run.assert_called_once_with(["systemctl", "enable", "--now", "docker"], timeout=60)
+
+@patch("modules.host.init.reconcile_docker.run_command")
+@patch("modules.host.init.reconcile_docker.run_check_docker_cli")
+@patch("modules.host.init.reconcile_docker.validate_docker_slice")
+@patch("builtins.open", new_callable=mock_open, read_data="ID=ubuntu\nVERSION_CODENAME=jammy")
+def test_reconcile_docker_engine_timeout_recovery_success(mock_file, mock_validate, mock_cli, mock_run):
+    """Test engine reconciliation timeout with successful post-validation recovery."""
+    mock_cli.return_value = _mock_result(CheckStatus.WARN)
+    mock_validate.return_value = True
+    
+    # Prereq commands pass, apt-get install times out
+    def side_effect(*args, **kwargs):
+        cmd = args[0]
+        if cmd[0] == "apt-get" and "install" in cmd and "docker-ce" in cmd:
+            return CommandResult(stdout="", stderr="", returncode=1, timed_out=True, error="")
+        if cmd[0] == "dpkg":
+            return CommandResult(stdout="amd64\n", stderr="", returncode=0, timed_out=False, error="")
+        return CommandResult(stdout="", stderr="", returncode=0, timed_out=False, error="")
+        
+    mock_run.side_effect = side_effect
+    
+    res = reconcile_docker_engine()
+    assert res.action == ReconcileAction.CREATED
+    assert res.success is True
+    mock_validate.assert_called_once()
+
+@patch("modules.host.init.reconcile_docker.run_command")
+@patch("modules.host.init.reconcile_docker.run_check_docker_cli")
+@patch("modules.host.init.reconcile_docker.validate_docker_slice")
+@patch("builtins.open", new_callable=mock_open, read_data="ID=ubuntu\nVERSION_CODENAME=jammy")
+def test_reconcile_docker_engine_timeout_recovery_failed(mock_file, mock_validate, mock_cli, mock_run):
+    """Test engine reconciliation timeout with failed post-validation recovery."""
+    mock_cli.return_value = _mock_result(CheckStatus.WARN)
+    mock_validate.return_value = False
+    
+    # Prereq commands pass, apt-get install times out
+    def side_effect(*args, **kwargs):
+        cmd = args[0]
+        if cmd[0] == "apt-get" and "install" in cmd and "docker-ce" in cmd:
+            return CommandResult(stdout="", stderr="", returncode=1, timed_out=True, error="")
+        if cmd[0] == "dpkg":
+            return CommandResult(stdout="amd64\n", stderr="", returncode=0, timed_out=False, error="")
+        return CommandResult(stdout="", stderr="", returncode=0, timed_out=False, error="")
+        
+    mock_run.side_effect = side_effect
+    
+    res = reconcile_docker_engine()
+    assert res.action == ReconcileAction.FAILED
+    assert res.success is False
+    assert "timeout and validation failure" in res.message
+    mock_validate.assert_called_once()
+

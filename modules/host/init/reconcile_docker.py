@@ -7,6 +7,7 @@ Governed by: HOST_SLICE_02_DOCKER_COMPOSE_ADDENDUM.md §14.
 import logging
 
 from models.enums import ReconcileAction
+from models.reconcile_result import ReconcileResult
 from modules.host.audit.checks_docker import (
     run_check_docker_cli,
     run_check_docker_compose,
@@ -14,37 +15,34 @@ from modules.host.audit.checks_docker import (
 )
 from modules.host.audit.checks_os import _parse_os_release
 from utils.subprocess_wrapper import run_command
+from modules.host.init.validate_docker import validate_docker_slice
 
 logger = logging.getLogger(__name__)
 
 
-def _setup_docker_official_repo() -> bool:
-    """Safely configure the official Docker APT repository."""
-    logger.info("Setting up official Docker repository...")
+def _setup_docker_official_repo() -> tuple[bool, str]:
+    """Safely configure the official Docker APT repository.
+    Returns (success, error_message).
+    """
+    logger.debug("Setting up official Docker repository...")
     
-    # 1. Determine OS and codename BEFORE modifying the system
     try:
         with open("/etc/os-release", "r") as f:
             os_data = _parse_os_release(f.read())
             
             os_id = os_data.get("ID", "").lower()
             if os_id != "ubuntu":
-                logger.error("Unsupported OS for Docker official repo: %s", os_id)
-                return False
+                return False, f"Unsupported OS for Docker official repo: {os_id}"
                 
             codename = os_data.get("VERSION_CODENAME")
-            # Fallback if UBUNTU_CODENAME is used instead of VERSION_CODENAME
             if not codename:
                 codename = os_data.get("UBUNTU_CODENAME")
                 
             if not codename:
-                logger.error("VERSION_CODENAME/UBUNTU_CODENAME not found in /etc/os-release")
-                return False
+                return False, "VERSION_CODENAME/UBUNTU_CODENAME not found in /etc/os-release"
     except OSError as e:
-        logger.error("Failed to read /etc/os-release: %s", e)
-        return False
+        return False, f"Failed to read /etc/os-release: {e}"
 
-    # 2. Install prerequisites
     cmds = [
         ["apt-get", "update"],
         ["apt-get", "install", "-y", "ca-certificates", "curl", "gnupg"],
@@ -56,43 +54,54 @@ def _setup_docker_official_repo() -> bool:
     for cmd in cmds:
         res = run_command(cmd)
         if res.returncode != 0:
-            logger.error("Failed prerequisite command: %s (stderr: %s)", " ".join(cmd), res.stderr)
-            return False
+            return False, f"Failed prerequisite command: {' '.join(cmd)}"
             
-    # 3. Determine architecture
     arch_res = run_command(["dpkg", "--print-architecture"])
     if arch_res.returncode != 0:
-        logger.error("Failed to determine dpkg architecture.")
-        return False
-    arch = arch_res.stdout.strip()
+        return False, "Failed to determine dpkg architecture."
     
-    # 4. Write repository source file
+    arch = arch_res.stdout.strip()
     source_entry = f"deb [arch={arch} signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu {codename} stable\n"
     
     try:
         with open("/etc/apt/sources.list.d/docker.list", "w") as f:
             f.write(source_entry)
     except OSError as e:
-        logger.error("Failed to write docker sources.list: %s", e)
-        return False
+        return False, f"Failed to write docker sources.list: {e}"
         
     res_update = run_command(["apt-get", "update"])
     if res_update.returncode != 0:
-        logger.error("Failed apt-get update after adding docker repo: %s", res_update.stderr)
-        return False
+        return False, "Failed apt-get update after adding docker repo."
         
-    return True
+    return True, ""
 
 
-def reconcile_docker_engine() -> ReconcileAction:
+def reconcile_docker_engine() -> ReconcileResult:
     """Ensure Docker Engine is installed."""
     if run_check_docker_cli().status == "OK":
-        return ReconcileAction.SKIPPED
+        return ReconcileResult(
+            step_id="RECONCILE_DOCKER_ENGINE",
+            action=ReconcileAction.SKIPPED,
+            message="Docker Engine is installed and validated",
+            evidence="Docker CLI found",
+            success=True,
+        )
 
-    logger.info("Docker CLI not found. Installing official Docker Engine...")
+    logger.debug("Docker CLI not found. Installing official Docker Engine...")
 
-    if not _setup_docker_official_repo():
-        return ReconcileAction.FAILED
+    repo_ok, repo_err = _setup_docker_official_repo()
+    if not repo_ok:
+        msg = (
+            "Docker Engine reconciliation failed at repository setup.\n"
+            "Failure type: command failure\n"
+            f"Reason: {repo_err}\n"
+            "Diagnostic command:\n"
+            "  sudo apt-get update"
+        )
+        return ReconcileResult(
+            step_id="RECONCILE_DOCKER_ENGINE", action=ReconcileAction.FAILED,
+            message=msg, evidence="repository setup failed", success=False
+        )
 
     packages = [
         "docker-ce",
@@ -102,40 +111,133 @@ def reconcile_docker_engine() -> ReconcileAction:
         "docker-compose-plugin"
     ]
     
-    res_install = run_command(["apt-get", "install", "-y"] + packages)
+    cmd = ["apt-get", "install", "-y"] + packages
+    res_install = run_command(cmd, timeout=300)
+    
     if res_install.returncode != 0:
-        logger.error("Failed to install official Docker packages: %s", res_install.stderr)
-        return ReconcileAction.FAILED
+        if res_install.timed_out:
+            logger.debug("Docker apt install timed out. Running post-timeout validation recovery...")
+            if validate_docker_slice():
+                return ReconcileResult(
+                    step_id="RECONCILE_DOCKER_ENGINE", action=ReconcileAction.CREATED,
+                    message="Docker Engine is installed and validated (recovered after timeout)",
+                    evidence="validate_docker_slice passed after timeout", success=True
+                )
+            
+            msg = (
+                "Docker Engine reconciliation failed.\n"
+                "Failure type: timeout and validation failure\n"
+                f"Command attempted: {' '.join(cmd)}\n"
+                "Next diagnostic commands:\n"
+                f"  sudo {' '.join(cmd)}\n"
+                "  docker --version\n"
+                "  docker info\n"
+                "  docker compose version\n"
+                "  systemctl is-active docker"
+            )
+            return ReconcileResult(
+                step_id="RECONCILE_DOCKER_ENGINE", action=ReconcileAction.FAILED,
+                message=msg, evidence="timeout and validation failed", success=False
+            )
+            
+        msg = (
+            "Docker Engine reconciliation failed.\n"
+            "Failure type: command failure\n"
+            f"Command attempted: {' '.join(cmd)}\n"
+            "Next diagnostic commands:\n"
+            f"  sudo {' '.join(cmd)}\n"
+            "  docker --version"
+        )
+        return ReconcileResult(
+            step_id="RECONCILE_DOCKER_ENGINE", action=ReconcileAction.FAILED,
+            message=msg, evidence="apt-get install failed", success=False
+        )
 
-    return ReconcileAction.CREATED
+    return ReconcileResult(
+        step_id="RECONCILE_DOCKER_ENGINE", action=ReconcileAction.CREATED,
+        message="Docker Engine is installed and validated",
+        evidence="apt-get install succeeded", success=True
+    )
 
 
-def reconcile_docker_compose() -> ReconcileAction:
+def reconcile_docker_compose() -> ReconcileResult:
     """Ensure Docker Compose plugin is installed."""
     if run_check_docker_compose().status == "OK":
-        return ReconcileAction.SKIPPED
+        return ReconcileResult(
+            step_id="RECONCILE_DOCKER_COMPOSE", action=ReconcileAction.SKIPPED,
+            message="Docker Compose plugin is installed and validated",
+            evidence="Compose CLI found", success=True
+        )
 
-    logger.info("Docker Compose plugin not found. Installing docker-compose-plugin...")
+    logger.debug("Docker Compose plugin not found. Installing docker-compose-plugin...")
 
-    res_install = run_command(["apt-get", "install", "-y", "docker-compose-plugin"])
+    cmd = ["apt-get", "install", "-y", "docker-compose-plugin"]
+    res_install = run_command(cmd, timeout=300)
+    
     if res_install.returncode != 0:
-        logger.error("Failed to install docker-compose-plugin: %s", res_install.stderr)
-        return ReconcileAction.FAILED
+        if res_install.timed_out:
+            msg = (
+                "Docker Compose plugin reconciliation failed.\n"
+                "Failure type: timeout\n"
+                f"Command attempted: {' '.join(cmd)}\n"
+                "Next diagnostic commands:\n"
+                f"  sudo {' '.join(cmd)}\n"
+                "  docker compose version"
+            )
+            return ReconcileResult(
+                step_id="RECONCILE_DOCKER_COMPOSE", action=ReconcileAction.FAILED,
+                message=msg, evidence="timeout", success=False
+            )
+            
+        msg = (
+            "Docker Compose plugin reconciliation failed.\n"
+            "Failure type: command failure\n"
+            f"Command attempted: {' '.join(cmd)}\n"
+            "Next diagnostic commands:\n"
+            f"  sudo {' '.join(cmd)}\n"
+            "  docker compose version"
+        )
+        return ReconcileResult(
+            step_id="RECONCILE_DOCKER_COMPOSE", action=ReconcileAction.FAILED,
+            message=msg, evidence="apt-get install failed", success=False
+        )
 
-    return ReconcileAction.CREATED
+    return ReconcileResult(
+        step_id="RECONCILE_DOCKER_COMPOSE", action=ReconcileAction.CREATED,
+        message="Docker Compose plugin is installed and validated",
+        evidence="apt-get install succeeded", success=True
+    )
 
 
-def enable_start_docker() -> ReconcileAction:
+def enable_start_docker() -> ReconcileResult:
     """Ensure Docker service is enabled and started."""
-    daemon_check = run_check_docker_daemon()
-    if daemon_check.status == "OK":
-        return ReconcileAction.SKIPPED
+    if run_check_docker_daemon().status == "OK":
+        return ReconcileResult(
+            step_id="RECONCILE_DOCKER_SERVICE", action=ReconcileAction.SKIPPED,
+            message="Docker service is active", evidence="Daemon is active", success=True
+        )
 
-    logger.info("Docker daemon not active. Enabling and starting docker service...")
+    logger.debug("Docker daemon not active. Enabling and starting docker service...")
 
-    res_enable = run_command(["systemctl", "enable", "--now", "docker"])
+    cmd = ["systemctl", "enable", "--now", "docker"]
+    res_enable = run_command(cmd, timeout=60)
+    
     if res_enable.returncode != 0:
-        logger.error("Failed to enable docker service: %s", res_enable.stderr)
-        return ReconcileAction.FAILED
+        msg = (
+            "Docker service enablement failed.\n"
+            "Failure type: command failure\n"
+            f"Command attempted: {' '.join(cmd)}\n"
+            "Next diagnostic commands:\n"
+            f"  sudo {' '.join(cmd)}\n"
+            "  systemctl status docker"
+        )
+        return ReconcileResult(
+            step_id="RECONCILE_DOCKER_SERVICE", action=ReconcileAction.FAILED,
+            message=msg, evidence="systemctl failed", success=False
+        )
 
-    return ReconcileAction.REPAIRED
+    return ReconcileResult(
+        step_id="RECONCILE_DOCKER_SERVICE", action=ReconcileAction.REPAIRED,
+        message="Docker service is active",
+        evidence="systemctl succeeded", success=True
+    )
