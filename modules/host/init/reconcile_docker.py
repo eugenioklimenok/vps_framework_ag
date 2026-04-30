@@ -20,6 +20,8 @@ from modules.host.init.validate_docker import validate_docker_slice
 
 logger = logging.getLogger(__name__)
 
+DOCKER_APT_UPDATE_TIMEOUT_SECONDS = 300
+
 
 def _setup_docker_official_repo() -> tuple[bool, str]:
     """Safely configure the official Docker APT repository.
@@ -53,7 +55,10 @@ def _setup_docker_official_repo() -> tuple[bool, str]:
     ]
     
     for cmd in cmds:
-        res = run_command(cmd)
+        if cmd == ["apt-get", "update"]:
+            res = run_command(cmd, timeout=DOCKER_APT_UPDATE_TIMEOUT_SECONDS)
+        else:
+            res = run_command(cmd)
         if res.returncode != 0:
             return False, f"Failed prerequisite command: {' '.join(cmd)}"
             
@@ -70,7 +75,7 @@ def _setup_docker_official_repo() -> tuple[bool, str]:
     except OSError as e:
         return False, f"Failed to write docker sources.list: {e}"
         
-    res_update = run_command(["apt-get", "update"])
+    res_update = run_command(["apt-get", "update"], timeout=DOCKER_APT_UPDATE_TIMEOUT_SECONDS)
     if res_update.returncode != 0:
         return False, "Failed apt-get update after adding docker repo."
         

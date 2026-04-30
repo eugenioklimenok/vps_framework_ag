@@ -51,12 +51,14 @@ def test_reconcile_docker_engine_install_official_repo(mock_file, mock_cli, mock
     calls = mock_run.call_args_list
     assert len(calls) == 8
     assert calls[0][0][0] == ["apt-get", "update"]
+    assert calls[0][1].get("timeout") == 300
     assert calls[1][0][0] == ["apt-get", "install", "-y", "ca-certificates", "curl", "gnupg"]
     assert calls[2][0][0] == ["install", "-m", "0755", "-d", "/etc/apt/keyrings"]
     assert calls[3][0][0] == ["curl", "-fsSL", "https://download.docker.com/linux/ubuntu/gpg", "-o", "/etc/apt/keyrings/docker.asc"]
     assert calls[4][0][0] == ["chmod", "a+r", "/etc/apt/keyrings/docker.asc"]
     assert calls[5][0][0] == ["dpkg", "--print-architecture"]
     assert calls[6][0][0] == ["apt-get", "update"]
+    assert calls[6][1].get("timeout") == 300
     
     expected_packages = [
         "apt-get", "install", "-y",
