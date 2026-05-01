@@ -4,7 +4,7 @@ Operate execution result models.
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from models.check_result import CheckResult
 from models.enums import AuditClassification, BackupResultState
@@ -50,3 +50,4 @@ class BackupResult:
     checksum_path: Optional[Path] = None
     artifact_validated: bool = False
     blocked_reason: str = ""
+    plan: Optional[Any] = None

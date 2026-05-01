@@ -140,3 +140,13 @@ class BackupResultState(str, Enum):
     CREATED = "CREATED"
     BLOCKED = "BLOCKED"
     FAILED = "FAILED"
+
+
+class OutputDirectoryClassification(str, Enum):
+    """Safety classification for backup output directories. (OPERATE)"""
+
+    EXISTS_WRITABLE = "EXISTS_WRITABLE"
+    MISSING_CREATABLE = "MISSING_CREATABLE"
+    INVALID = "INVALID"
+    UNSAFE = "UNSAFE"
+    AMBIGUOUS = "AMBIGUOUS"

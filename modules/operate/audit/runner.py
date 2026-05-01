@@ -25,6 +25,14 @@ def run_audit_project(path: str, env_file_path: str, endpoint_url: Optional[str]
             classification=AuditClassification.BLOCKED,
             blocked_reason=reason
         )
+
+    compose_file = target_path / "compose.yaml"
+    if not compose_file.exists() or not compose_file.is_file():
+        return ProjectAuditResult(
+            classification=AuditClassification.BLOCKED,
+            project_slug=slug,
+            blocked_reason="Missing compose.yaml runtime context.",
+        )
         
     if not env_file.exists() or not env_file.is_file():
          return ProjectAuditResult(

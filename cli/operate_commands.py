@@ -59,6 +59,11 @@ def backup_project(
         "--path",
         help="Target directory path of the project scaffold.",
     ),
+    output_dir: str = typer.Option(
+        ...,
+        "--output-dir",
+        help="Explicit directory where backup artifacts will be created.",
+    ),
     include_env: bool = typer.Option(
         False,
         "--include-env",
@@ -68,7 +73,7 @@ def backup_project(
     """
     Create a deterministic backup artifact of the project.
     """
-    result = run_backup_project(path=path, include_env=include_env)
+    result = run_backup_project(path=path, output_dir=output_dir, include_env=include_env)
 
     # Print the report
     report = format_backup_report(result, path)
